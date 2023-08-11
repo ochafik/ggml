@@ -84,7 +84,7 @@ opt_flags = ['-g', '-O0'] if debug else ['-Ofast', '-DNDEBUG']
 
 ffibuilder = cffi.FFI()
 ffibuilder.set_source(
-    "pyggml.ggml",
+    "ggml.cffi",
     "\n".join(list(map(read_text, source_files))) if compile else None,
     extra_compile_args=opt_flags + defines +
       (["-I", include_dir.as_posix()] if compile else []),

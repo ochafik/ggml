@@ -11,14 +11,14 @@ export LLAMA_DIR=$PWD/../../../llama.cpp
 ## Compile self-contained native extension (PREFERRED)
 
 ```bash
-rm -fR pyggml/*
+rm -fR ggml/cffi.*
 
 # Default env options: DEBUG=0 COMPILE=1 USE_LLAMA=1
 python generate.py
-# ls pyggml/*
-#     ggml.c
-#     ggml.o
-#     ggml.cpython-310-darwin.so
+# ls ggml/*
+#     cffi.c
+#     cffi.o
+#     cffi.cpython-310-darwin.so
 
 # All good, just run this:
 python example.py
@@ -32,10 +32,10 @@ Alternatively you can load the compiled `libllama.so` binary w/ generated ctypes
 # Note: use LLAMA_DEBUG=1 to debug any crashes
 ( cd $LLAMA_DIR && LLAMA_METAL=1 make clean libllama.so )
 
-rm -fR pyggml/*
+rm -fR ggml/cffi.*
 COMPILE=0 python generate.py
-# ls pyggml/*
-#     ggml.py
+# ls ggml/*
+#     cffi.py
 
 # You can omit these if you've installed the library to say, /usr/lib
 export DYLD_LIBRARY_PATH=$LLAMA_DIR:$DYLD_LIBRARY_PATH

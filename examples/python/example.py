@@ -1,8 +1,4 @@
-# Import the lib and ffi objects from the generated module (which may or may not be compiled as an extension)
-# If the .so load failed, add the directory containing the .so to DYLD_LIBRARY_PATH (on Mac) or LD_LIBRARY_PATH.
-from pyggml.ggml import ffi
-try: from pyggml.ggml import lib
-except ImportError: lib = ffi.dlopen("libllama.so")
+from ggml import ffi, lib
 
 def set_floats_1d(t, values):
     for i, f in enumerate(values):
