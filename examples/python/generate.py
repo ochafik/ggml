@@ -14,11 +14,11 @@ def sizeof(type: str, header_files: list[Path], *args: list[str]) -> int:
           #include <stdio.h>
           {includes}
           int main() {{ printf("%lu", sizeof({type})); }}
-        ''', text=True)
-    return int(subprocess.run(["./sizeof"], capture_output=True, text=True).stdout)
+        ''', text=True, check=True)
+    return int(subprocess.run(["./sizeof"], capture_output=True, text=True, check=True).stdout)
 
 def preprocess(src: str, *args: list[str]):
-    return subprocess.run([c_compiler, "-E", *args, "-"], input=src, capture_output=True, text=True).stdout
+    return subprocess.run([c_compiler, "-E", *args, "-"], input=src, capture_output=True, text=True, check=True).stdout
 
 def read_text(p: Path):
   with p.open("rt") as f:
@@ -41,7 +41,6 @@ def prettify_header(header_files: list[str], defines: list[str]) -> str:
   header = re.sub(r'sizeof\s*\(([^)]+)\)', lambda m: str(sizes[m.group(1)]), header)
   print(f'sizes: {sizes}')
   assert('struct ggml_tensor' in sizes)
-  # assert('block_q2_K' in sizes)
 
   # Replace static size_t constants w/ macros and run preprocessor again to expand them
   header = re.sub(r'static\s+const\s+size_t\s+(\w+)\s*=\s*([0-9]+)\s*;', r'#define \1 \2', header)
