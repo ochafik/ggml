@@ -1,37 +1,40 @@
-from ggml import ffi, lib
-
-def set_floats_1d(t, values):
-    for i, f in enumerate(values):
-        lib.ggml_set_f32_1d(t, i, f)
-
-def get_floats_1d(t):
-    n = lib.ggml_nelements(t)
-    return [lib.ggml_get_f32_1d(t, i) for i in range(n)]
+from ggml import GgmlContext, GgmlTensor, lib
+import numpy as np
 
 if __name__ == '__main__':
     n_threads = 4
-    n = 10
+    n = 1024
 
-    params = ffi.new('struct ggml_init_params*')
-    params.mem_size = 120000
-    ctx = lib.ggml_init(params[0])
+    ctx = GgmlContext(mem_size=80000000)
 
-    a = lib.ggml_new_tensor_1d(ctx, lib.GGML_TYPE_F32, n)
-    b = lib.ggml_new_tensor_1d(ctx, lib.GGML_TYPE_F32, n)
+    # TODO: support quantization
+    # type = lib.GGML_TYPE_I8
+    # type = lib.GGML_TYPE_Q4_0
+    # type = lib.GGML_TYPE_Q4_K
+    # type = lib.GGML_TYPE_F16
+    type = lib.GGML_TYPE_F32
+    a = ctx.new_tensor(type, n, n)
+    b = ctx.new_tensor(type, n, n)
+    # print(f'a: shape={a.shape}, strides={a.strides}')
+    # print(f'b: shape={b.shape}, strides={b.strides}')
 
-    set_floats_1d(a, [i for i in range(n)])
-    set_floats_1d(b, [i + 100000 for i in range(n)])
+    # a.write([(i) for i in range(n * n)])
+    a.write(np.ones((n, n), dtype=np.float32), quantize=True)
+    # b.write([(i * 2) for i in range(n * n)])
+    b.write(np.random.rand(n, n).astype(np.float32), quantize=True)
+    # b.write(np.ones((n, n), dtype=np.float32))
 
-    c = lib.ggml_add(ctx, a, b)
-    c = lib.ggml_mul(ctx, c, c)
+    # c = a * b
+    c = a + b
+    # c = c * c
 
-    gf = ffi.new('struct ggml_cgraph*')
-    lib.ggml_build_forward_expand(gf, c)
-    lib.ggml_graph_compute_with_ctx(ctx, gf, n_threads)
+    # d = a @ b
 
-    print(get_floats_1d(a))
-    print(get_floats_1d(b))
-    print(get_floats_1d(c))
-    # # lib.ggml_get_data(c)
+    gf = ctx.build_forward(c)
+    # gf.build_forward_expand(d)
 
-    lib.ggml_free(ctx)
+    gf.compute(n_threads)
+
+    print(a.numpy())
+    print(b.numpy())
+    print(c.numpy()) # dequantize=True

@@ -1,6 +1,6 @@
 # Example usage of cffi-generated GGML bindings in Python
 
-## Prerequisites
+### Prerequisites
 
 ```bash
 pip install -r requirements.txt
@@ -8,7 +8,7 @@ pip install -r requirements.txt
 export LLAMA_DIR=$PWD/../../../llama.cpp
 ```
 
-## Compile self-contained native extension (PREFERRED)
+### Compile self-contained native extension (PREFERRED)
 
 ```bash
 rm -fR ggml/cffi.*
@@ -24,7 +24,7 @@ python generate.py
 python example.py
 ```
 
-## Point to libllama.so directly (no extension)
+### Point to libllama.so directly (no extension)
 
 Alternatively you can load the compiled `libllama.so` binary w/ generated ctypes:
 
@@ -43,3 +43,17 @@ export LD_LIBRARY_PATH=$LLAMA_DIR:$LD_LIBRARY_PATH
 
 python example.py
 ```
+
+### Alternatives
+
+This simple example's primary goal is to showcase automatically generated & fast bindings.
+
+- https://github.com/abetlen/ggml-python: these bindings seem to be hand-written and use [ctypes](https://docs.python.org/3/library/ctypes.html) (making its maintenance potentially error-prone and performance slower than compiled [cffi](https://cffi.readthedocs.io/) bindings)
+  
+- https://github.com/abetlen/llama-cpp-python: these expose the C++ `llama.cpp` interface, which this example cannot easily be extended to support (`cffi` only generates bindings of C libraries)
+
+- [pybind11](https://github.com/pybind/pybind11) and [nanobind](https://github.com/wjakob/nanobind) are two alternatives to cffi that generate bindings for C++. Unfortunately none of them have an automatic generator so writing bindings is quite time-consuming.
+
+### Caveats
+
+While [cffi](https://cffi.readthedocs.io/) makes it trivial to keep up with any changes to the GGML API, it's using the pycparser package which seems a bit sensitive to exotic C syntaxes (the likes that can be found in Mac system headers, for instance), and it doesn't have its own C preprocessor. See [generate.py](./generate.py) to get a better idea of the what was needed to make this work.
