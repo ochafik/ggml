@@ -54,7 +54,7 @@ this_dir = Path('.')
 use_llama = os.environ.get('USE_LLAMA', '1') == '1'
 compile = os.environ.get('COMPILE', '1') == '1'
 debug = os.environ.get('DEBUG', '0') == '1'
-llama_dir = os.environ.get('LLAMA_DIR', (this_dir / '..' / '..' / '..' / 'llama.cpp').as_posix())
+llama_dir = Path(os.environ.get('LLAMA_DIR', (this_dir / '..' / '..' / '..' / 'llama.cpp').as_posix()))
 
 if use_llama:
   include_dir = llama_dir
