@@ -86,6 +86,7 @@ ffibuilder = cffi.FFI()
 ffibuilder.set_source(
     "ggml.cffi",
     "\n".join(list(map(read_text, source_files))) if compile else None,
+    extra_link_args=["-lm"],
     extra_compile_args=opt_flags + defines +
       (["-I", include_dir.as_posix()] if compile else []),
 )
