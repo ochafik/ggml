@@ -15,6 +15,7 @@ rm -fR ggml/cffi.*
 
 # Default env options: DEBUG=0 COMPILE=1 USE_LLAMA=1
 python generate.py
+python generate_stubs.py ../../../llama.cpp/{k_quants,ggml*}.h
 # ls ggml/*
 #     cffi.c
 #     cffi.o
@@ -26,7 +27,7 @@ python example.py
 
 ### Point to libllama.so directly (no extension)
 
-Alternatively you can load the compiled `libllama.so` binary w/ generated ctypes:
+Alternatively you can load the compiled `libllama.so` binary w/ generated .py bindings:
 
 ```bash
 # Note: use LLAMA_DEBUG=1 to debug any crashes
