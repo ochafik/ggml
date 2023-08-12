@@ -31,3 +31,11 @@ zig-cache/
 *.dot
 
 *.sw?
+
+# Generated files
+examples/python/ggml/*.o
+examples/python/ggml/*.c
+examples/python/ggml/*.so
+examples/python/ggml/ggml.py
+examples/python/ggml/
+__pycache__/
