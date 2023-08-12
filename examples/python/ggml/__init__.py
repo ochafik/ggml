@@ -27,28 +27,29 @@
   This module is just a convenient hub to import the cffi-generated
   wrappers, supporting the two ways they can be built.
 
-  - If the native extension was generated with `python generate.py`, 
-    we're in what cffi calls “out-of-line” + “API mode” (the fastest)
-    and this module imports both `lib` & `ffi` from ./ggml/cffi.*.so
-
-  - If only a Python module was generated using `COMPILE=0 python generate.py`,
+  - If only a Python module was generated (`python generate.py --mode=dynamic_load`)
     we're in what cffi “out-of-line” + “ABI mode” 
     and this module imports `ffi` from ./ggml/cffi.py and creates `lib`
-    by loading the llama (or ggml) shared library. That library can be
+    by dynamically loading the llama (or ggml) shared library. That library can be
     found from the usual LD_LIBRARY_PATH or DYLD_LIBRARY_PATH, or its 
-    full path specified in the LIB_LLAMA_SO environment variable.
+    full path specified in the GGML_LIBRARY environment variable.
+
+  - If a native extension was built,
+    we're in what cffi calls “out-of-line” + “API mode” (the fastest)
+    and this module imports both `lib` & `ffi` from ./ggml/cffi.*.so
     
   See https://cffi.readthedocs.io/en/latest/cdef.html for more on cffi.
 
-  Additionally, we generate stubs for `ggml.lib` in `ggml/lib/__init__.pyi`
-  that tooling like VS Code or mypy can make use of.
+  Additionally, we generate stubs for `ggml.lib` in `ggml/__init__.pyi`
+  that tooling like VS Code or mypy can make use of (but Colab seems to magically
+  pick up the typing info from the python module)
 
 """
 # Import / export the lib and ffi objects for the "low-level" bindings.
 ########################################################################################################################
 
 def __library_not_found_error(details=''):
-    return OSError(f"Couldn't find the llama library{details}. Add its directory to DYLD_LIBRARY_PATH (on Mac) or LD_LIBRARY_PATH, or define LIB_LLAMA_SO.")
+    return OSError(f"Couldn't find the llama library{details}. Add its directory to DYLD_LIBRARY_PATH (on Mac) or LD_LIBRARY_PATH, or define GGML_LIBRARY.")
 
 # If the following import fails, you haven't run `python generate.py` yet.
 try:
@@ -67,7 +68,8 @@ except ImportError as e:
 
     # We've only got Python bindings, so we need to load the library manually.
     
-    exact_name = os.environ.get("LIB_LLAMA_SO")
+    exact_name = os.environ.get("GGML_LIBRARY")
+    print(f"GGML_LIBRARY={exact_name}")
     if exact_name is None:
         names = ["libllama.so"]
         if platform.system() == 'Darwin':
