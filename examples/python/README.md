@@ -41,22 +41,54 @@ print(numpy(sum, allow_copy=True))
 
 ### Prerequisites
 
+Some Python deps, and it's better if you have a llama.cpp repo lying around (but not required, we can build against either repos).
+
 ```bash
 pip install -r requirements.txt
 
 export LLAMA_DIR=$PWD/../../../llama.cpp
 ```
 
-### Compile self-contained native extension (PREFERRED)
+### Generating the bindings: 4 options
+
+Nothing is for free in like. [cffi] asks users to choose between [3 options](https://cffi.readthedocs.io/en/latest/cdef.html) to build and deploy modules. Well, we ask you to choose between the following *4* `MODE`s:
+
+- `dynamic_load` (_Preferred for versioning_): just generate `*.py` and `*.pyi` files. Let cffi load `libllama.so` at execution time (it needs to be installed or its parent directory in your `LD_LIBRARY_PATH` or `DYLD_LIBRARY_PATH` env vars). This is the backup if the other options below fail, as it involves the least compilation. This is also a good mode to use to track generated files.
+
+- `dynamic_link`: generate and build a native Python extension that dynamically links to `libllama.so`. Same as above, it needs to be installed / in ld path.
+
+- `static_link` (_Preferred for local builds_): generate and build a native Python extension that statically links the compiled units from llama.cpp or ggml, so that it's self-sufficient at execution time. This is the preferred way if you're doing a local build.
+
+- `inline` (__CPU support only__): have cffi build ggml.c by itself, which produces a self-sufficient Python extension that's unable to use METAL, CUDA or OPENCL acceleration :-S. But hey, that's the only mode that doesn't require you to build anything beforehand.
+
+See [test_builds.sh](./test_builds.sh) for updated build instructions, or read on below.
+
+#### Generate against llama.cpp
+
+Prerequisite: build llama.cpp and ensure its shared library is in the ld path:
 
 ```bash
-rm -fR ggml/cffi.*
+export LLAMA_DIR:-../../../llama.cpp
 
-# Default env options: DEBUG=0 COMPILE=1 USE_LLAMA=1
-python generate.py
+# Make sure to change -DLLAMA_METAL=1 for any other hardware specific flags, e.g. -DLLAMA_CUDA=1 or -DLLAMA_OPENCL=1:
+( cmake "$LLAMA_DIR" -B llama_build \
+    -DLLAMA_METAL=1 && \
+    -DBUILD_SHARED_LIBS=1 && \
+  cd llama_build && \
+  make -j )
 
-# All done, now just test things:
-python example.py
+export LD_LIBRARY_PATH=$PWD/llama_build
+export DYLD_LIBRARY_PATH=$PWD/llama_build
+```
+
+Then build, and run the example:
+
+```bash
+export LLAMA_BUILD_DIR=llama_build
+rm ggml/cffi.*
+
+# See the various mode options above
+python generate.py --llama_cpp_dir=$LLAMA_DIR --build_dir=$LLAMA_BUILD_DIR --mode=static_link
 ```
 
 ### Point to libllama.so directly (no extension)
