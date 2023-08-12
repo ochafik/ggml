@@ -36,7 +36,7 @@
     and this module imports `ffi` from ./ggml/cffi.py and creates `lib`
     by loading the llama (or ggml) shared library. That library can be
     found from the usual LD_LIBRARY_PATH or DYLD_LIBRARY_PATH, or its 
-    full path specified in the GGML_PY_SO environment variable.
+    full path specified in the LIB_LLAMA_SO environment variable.
     
   See https://cffi.readthedocs.io/en/latest/cdef.html for more on cffi.
 
@@ -47,20 +47,41 @@
 # Import / export the lib and ffi objects for the "low-level" bindings.
 ########################################################################################################################
 
+def __library_not_found_error(details=''):
+    return OSError(f"Couldn't find the llama library{details}. Add its directory to DYLD_LIBRARY_PATH (on Mac) or LD_LIBRARY_PATH, or define LIB_LLAMA_SO.")
+
 # If the following import fails, you haven't run `python generate.py` yet.
 try:
     from ggml.cffi import ffi as ffi
-except ImportError:
-    raise ImportError("Couldn't find ggml bindings. Run `python generate.py` first, or check your PYTHONPATH.")
+except ImportError as e:
+    if 'Library not loaded: libllama.so' in str(e):
+        raise __library_not_found_error(' (native extension was loaded but itself failed to load libllama.so)')
+    raise ImportError(f"Couldn't find ggml bindings ({e}). Run `python generate.py` first, or check your PYTHONPATH.")
 
 try:
     # Try to import the "out-of-line" (compiled extension) version of the library.
     from ggml.cffi import lib as _lib
-except ImportError:
+except ImportError as e: 
     import os
+    import platform
+
     # We've only got Python bindings, so we need to load the library manually.
-    # If the following line fails, add the directory containing the .so to DYLD_LIBRARY_PATH (on Mac) or LD_LIBRARY_PATH.
-    _lib = ffi.dlopen(os.environ.get("GGML_PY_SO") or "libllama.so")
+    
+    exact_name = os.environ.get("LIB_LLAMA_SO")
+    if exact_name is None:
+        names = ["libllama.so"]
+        if platform.system() == 'Darwin':
+            names = ["libllama.dylib"]
+    else:
+        names = [exact_name]
+
+    for i, name in enumerate(names):
+      try:
+          _lib = ffi.dlopen(name)
+      except OSError:
+          if i < len(names) - 1:
+              continue
+          raise __library_not_found_error(f" (tried names: {names})")
 
 # This is where all the functions, enums and constants are defined
 lib = _lib
