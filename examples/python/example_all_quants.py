@@ -1,26 +1,74 @@
+# Published here: https://gist.github.com/ochafik/8a5a3e4e96cd10fe037c1ae89d199a1e
+
 from ggml import ffi, lib
 from ggml.utils import init, numpy, copy
 import numpy as np
+from math import pi, cos, sin, ceil
 
-def diff(a, b):
-  return { "l2": np.linalg.norm(b - a, 2), "linf": np.linalg.norm(b - a, np.inf) }
+import matplotlib.pyplot as plt
 
-ctx = init(mem_size = 10*1024*1024)
+ctx = init(mem_size=100*1024*1024) # Will be auto-GC'd
+# n = 256
+n = 256 * 2
 
-n = 256
-a = lib.ggml_new_tensor_2d(ctx, lib.GGML_TYPE_F32, n, n)
-copy(np.random.rand(n * n).reshape((n, n)).astype(np.float32), a)
+orig = np.array([
+    [
+        cos(j * 2 * pi / n) * (sin(i * 2 * pi / n))
+        for j in range(n)
+    ]
+    for i in range(n)
+], np.float32)
+orig_tensor = lib.ggml_new_tensor_2d(ctx, lib.GGML_TYPE_F32, n, n)
+copy(orig, orig_tensor)
 
-for type in range(lib.GGML_TYPE_COUNT):
+quants = [
+    type for type in range(lib.GGML_TYPE_COUNT)
+    if lib.ggml_is_quantized(type) and
+       type not in [lib.GGML_TYPE_Q8_1, lib.GGML_TYPE_Q8_K]
+]
+# quants = [lib.GGML_TYPE_Q2_K]
+
+def get_name(type):
     name = lib.ggml_type_name(type)
-    name = ffi.string(name).decode('utf-8') if name else None
+    return ffi.string(name).decode('utf-8') if name else '?'
 
-    if lib.ggml_is_quantized(type):
-        # print(f'Testing quantization {name}')
-        try:
-            q = lib.ggml_new_tensor_2d(ctx, type, n, n)
-            copy(a, q)
-            d = diff(numpy(q, allow_copy=True), numpy(a))
-            print(f'{name}: {d}')
-        except Exception as e:
-            print(f'Error: {e}')
+quants.sort(key=get_name)
+quants.insert(0, None)
+print(quants)
+
+ncols=4
+nrows = ceil(len(quants) / ncols)
+
+plt.figure(figsize=(ncols * 5, nrows * 5), layout='tight')
+
+for i, type in enumerate(quants):
+    plt.subplot(nrows, ncols, i + 1)
+    # ax = axss[i // ncols][i % ncols]
+    try:
+        if type == None:
+            plt.title('Original')
+            plt.imshow(orig)
+            # ax.set_title('original')
+        else:
+            quantized_tensor = lib.ggml_new_tensor_2d(ctx, type, n, n)
+            copy(orig_tensor, quantized_tensor)
+            quantized = numpy(quantized_tensor, allow_copy=True)
+            d = quantized - orig
+            results = {
+                "l2": np.linalg.norm(d, 2),
+                "linf": np.linalg.norm(d, np.inf),
+                "compression":
+                    round(lib.ggml_nbytes(orig_tensor) /
+                          lib.ggml_nbytes(quantized_tensor), 1)
+            }
+            name = get_name(type)
+            print(f'{name}: {results}')
+            
+            # axs.subptitle(name)
+            plt.title(f'{name} ({results["compression"]}x smaller)')
+            plt.imshow(quantized, interpolation='nearest')
+        
+    except Exception as e:
+        print(f'Error: {e}')
+
+plt.show()

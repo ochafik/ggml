@@ -9,13 +9,13 @@ def calc_tensor_size(type: int, shape: tuple[int]) -> int:
     size = lib.ggml_type_size(type)
     for dim in shape:
         size *= dim
-    return size / lib.ggml_blck_size(type)
+    return int(size / lib.ggml_blck_size(type))
 
 if __name__ == '__main__':
     n_threads = 4
     n = 256
 
-    ctx = init(mem_size = 1200000)
+    ctx = init(mem_size = 2000000)
 
     # type = lib.GGML_TYPE_I8
     type = lib.GGML_TYPE_Q4_0
@@ -27,7 +27,7 @@ if __name__ == '__main__':
     # qtype = lib.GGML_TYPE_Q4_0
     qtype = lib.GGML_TYPE_Q8_0
 
-    lib.bad()
+    # lib.bad()
 
     # a = lib.ggml_new_tensor_1d(ctx, type, n)
     # b = lib.ggml_new_tensor_1d(ctx, type, n)
@@ -75,10 +75,10 @@ if __name__ == '__main__':
     print(numpy(b, allow_copy=True))
     print(numpy(c, allow_copy=True))
 
-    shape = (512, 256)
-    nbytes = calc_tensor_size(lib.GGML_TYPE_Q5_K, shape)
-    print(f'nbytes = {nbytes}')
-    arr = np.zeros(nbytes, dtype=np.uint8).reshape(shape)
-    # copy(np.array())
+    # shape = (512, 256)
+    # nbytes = calc_tensor_size(lib.GGML_TYPE_Q5_K, shape)
+    # print(f'nbytes = {nbytes}')
+    # arr = np.zeros(nbytes, dtype=np.uint8).reshape(shape)
+    # # copy(np.array())
 
     # # lib.ggml_get_data(c)

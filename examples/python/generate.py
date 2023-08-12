@@ -11,6 +11,7 @@ import os
 from sys import argv
 from pathlib import Path
 from stubs_generator import generate_stubs
+import platform
 
 this_dir = Path('.')
 
@@ -127,10 +128,17 @@ preprocessed_header = prettify_header(header_files, defines)
 # *but* don't do this with macros.
 preprocessed_header = 'typedef uint16_t __fp16;\n' + preprocessed_header
 
+CFLAGS = os.environ.get('CFLAGS', '').split(' ')
+LDFLAGS = ["-lm"] + os.environ.get('LDFLAGS', '').split(' ')
+
+CFLAGS += defines
+CFLAGS += ["-I", include_dir.as_posix()]
 if debug:
-    opt_flags = ['-g', '-O0']
+    CFLAGS += ['-g', '-O0']
 else:
-    opt_flags = ['-Ofast', '-DNDEBUG']
+    CFLAGS += ['-Ofast', '-DNDEBUG']
+# if platform.system() == 'Darwin':
+#    CFLAGS += ['-DGGML_USE_METAL']
 
 ffibuilder = cffi.FFI()
 
@@ -138,10 +146,8 @@ ffibuilder = cffi.FFI()
 ffibuilder.set_source(
     "ggml.cffi",
     "\n".join(list(map(read_text, source_files))) if compile else None,
-    extra_link_args=["-lm"],
-    extra_compile_args=opt_flags + defines + [
-       "-I", include_dir.as_posix()
-    ])
+    extra_link_args=LDFLAGS,
+    extra_compile_args=CFLAGS)
 try:
   ffibuilder.cdef(preprocessed_header)
   ffibuilder.compile(verbose=True)
