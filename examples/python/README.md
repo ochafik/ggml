@@ -30,8 +30,6 @@ Alternatively you can load the compiled `libllama.so` binary w/ generated .py bi
 
 rm -fR ggml/cffi.*
 COMPILE=0 python generate.py
-# ls ggml/*
-#     cffi.py
 
 # You can omit these if you've installed the library to say, /usr/lib
 export DYLD_LIBRARY_PATH=$LLAMA_DIR:$DYLD_LIBRARY_PATH

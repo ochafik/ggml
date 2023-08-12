@@ -4,8 +4,8 @@
   This module is just a convenient hub to import the cffi-generated
   wrappers, supporting the two ways they can be built.
 
-  - If the native extension was generated `python generate.py`, 
-    we're in what cffi “out-of-line” + “API mode” (the fastest)
+  - If the native extension was generated with `python generate.py`, 
+    we're in what cffi calls “out-of-line” + “API mode” (the fastest)
     and this module imports both `lib` & `ffi` from ./ggml/cffi.*.so
 
   - If only a Python module was generated using `COMPILE=0 python generate.py`,
@@ -17,8 +17,8 @@
     
   See https://cffi.readthedocs.io/en/latest/cdef.html for more on cffi.
 
-  Additionally, we generate stubs for `lib` in `ggml/lib/__init__.pyi`
-  that  some tooling like VS Code or mypy might make use of.
+  Additionally, we generate stubs for `ggml.lib` in `ggml/lib/__init__.pyi`
+  that tooling like VS Code or mypy can make use of.
 
 """
 # Import / export the lib and ffi objects for the "low-level" bindings.
