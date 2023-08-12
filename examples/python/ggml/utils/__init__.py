@@ -35,14 +35,14 @@ def copy(from_tensor: TensorLike, to_tensor: TensorLike, allow_requantize: bool 
 
     if from_type == to_type:
         ffi.memmove(__get_data(to_tensor), __get_data(from_tensor), __get_nbytes(from_tensor))
+    else:
+        if lib.ggml_is_quantized(from_type) and lib.ggml_is_quantized(to_type) and not allow_requantize:
+            raise ValueError(f"Requantizing from type {from_type} to {to_type} is disabled. Force with allow_requantize=True")    
+        
+        f32_data = __get_floats(from_tensor)
+        __set_floats(to_tensor, f32_data)
 
-    if lib.ggml_is_quantized(from_type) and lib.ggml_is_quantized(to_type) and not allow_requantize:
-        raise ValueError(f"Requantizing from type {from_type} to {to_type} is disabled. Force with allow_requantize=True")    
-    
-    f32_data = __get_floats(from_tensor)
-    __set_floats(to_tensor, f32_data)
-
-def numpy(tensor: ffi.CData, allow_copy: Union[bool, np.ndarray] = False) -> np.ndarray:
+def numpy(tensor: ffi.CData, allow_copy: Union[bool, np.ndarray] = False, allow_requantize=False) -> np.ndarray:
     """
       Convert a ggml tensor to a numpy array.
       If the tensor isn't quantized, the returned numpy array will be a view over its data.
@@ -58,6 +58,8 @@ def numpy(tensor: ffi.CData, allow_copy: Union[bool, np.ndarray] = False) -> np.
           If False, will throw an error if the tensor is quantized (since dequantization requires extra memory).
           If True, will dequantize the tensor and return a copy of the data in a new float32 numpy array.
           If an np.ndarray, will copy the data into the given array (which must be the same shape as the tensor) when dequantization is needed
+      allow_requantize : bool
+          If allow_copy is a tensor with a different quantization type than the source tensor, will throw an error unless allow_requantize is True.
     """
     shape = __get_shape(tensor)
 
@@ -70,8 +72,8 @@ def numpy(tensor: ffi.CData, allow_copy: Union[bool, np.ndarray] = False) -> np.
         if allow_copy == False:
             raise ValueError("Quantized tensor requires extra memory to be converted to numpy array, and changes to the numpy array aren't reflected back to the tensor. Force with allow_copy=True")
       
-        destination = allow_copy if isinstance(allow_copy, np.ndarray) else np.empty(tuple(shape), dtype=np.float32)
-        copy(tensor, destination, allow_requantize=False)
+        destination = allow_copy if isinstance(allow_copy, np.ndarray) else np.empty(shape, dtype=np.float32)
+        copy(tensor, destination, allow_requantize=allow_requantize)
         return destination
     else:
         dtype = type_to_dtype(tensor.type)
