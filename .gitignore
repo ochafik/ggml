@@ -33,9 +33,5 @@ zig-cache/
 *.sw?
 
 # Generated files
-examples/python/ggml/*.o
-examples/python/ggml/*.c
-examples/python/ggml/*.so
-examples/python/ggml/ggml.py
-examples/python/ggml/
+examples/python/ggml/cffi.*
 __pycache__/
