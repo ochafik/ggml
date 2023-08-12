@@ -140,7 +140,6 @@ ffibuilder.set_source(
     "\n".join(list(map(read_text, source_files))) if compile else None,
     extra_link_args=["-lm"],
     extra_compile_args=opt_flags + defines + [
-       "-Wno-deprecated",
        "-I", include_dir.as_posix()
     ])
 try:
