@@ -10,7 +10,6 @@
 #
 #     python generate.py --mode=static_link ...
 #
-import {ggml_package}.ffi as ffi
 
 # auto-generated file
 import _cffi_backend
