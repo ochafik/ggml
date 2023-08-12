@@ -7,6 +7,16 @@ import numpy as np
 
 TensorLike = Union[ffi.CData, np.ndarray]
 
+def init(mem_size: int, mem_buffer: ffi.CData = ffi.NULL, no_alloc: bool = False) -> ffi.CData:
+    """
+      Initialize a ggml context, which will be freed automatically when the pointer is garbage collected.
+    """
+    params = ffi.new('struct ggml_init_params*')
+    params.mem_size = mem_size
+    params.mem_buffer = mem_buffer
+    params.no_alloc = no_alloc
+    return ffi.gc(lib.ggml_init(params[0]), lib.ggml_free)
+    
 def copy(from_tensor: TensorLike, to_tensor: TensorLike, allow_requantize: bool = True):
     """
       Copy the contents of one tensor to another, doing any necessary type / quantization conversions.
@@ -70,7 +80,7 @@ def numpy(tensor: ffi.CData, allow_copy: Union[bool, np.ndarray] = False, allow_
 
     if lib.ggml_is_quantized(tensor.type):
         if allow_copy == False:
-            raise ValueError("Quantized tensor requires extra memory to be converted to numpy array, and changes to the numpy array aren't reflected back to the tensor. Force with allow_copy=True")
+            raise ValueError(f"{__describe(tensor)} is quantized, conversion to numpy requires a copy (pass allow_copy=True; changes to the numpy array won't affect the original).")
       
         destination = allow_copy if isinstance(allow_copy, np.ndarray) else np.empty(shape, dtype=np.float32)
         copy(tensor, destination, allow_requantize=allow_requantize)
@@ -78,19 +88,17 @@ def numpy(tensor: ffi.CData, allow_copy: Union[bool, np.ndarray] = False, allow_
     else:
         dtype = type_to_dtype(tensor.type)
         if not dtype:
-            raise NotImplementedError(f'Unknown type {tensor.type}')
+            raise NotImplementedError(f'Cannot convert {__describe(tensor)} to numpy')
 
         strides = __get_strides(tensor)
-        # assert(nbytes == strides[-1] * shape[-1])
-        # nbytes = lib.ggml_nbytes(tensor)
         actualsize = strides[-1] * shape[-1]
-        # if nbytes != actualbytes:
-        #     raise ValueError(f"nbytes ({nbytes}) != actualbytes ({actualbytes})")
-
-        # print(f'numpy: nbytes = {nbytes}, actualbytes = {actualbytes}, strides = {strides}, shape = {shape}, dtype = {dtype}')
         a = np.frombuffer(ffi.buffer(data, actualsize), dtype=dtype)
         a.shape = shape
         return a
+
+def __type_name(type: int) -> str:
+    name = lib.ggml_type_name(type)
+    return ffi.string(name).decode('utf-8') if name else None
 
 __k_quant_types = set([
   lib.GGML_TYPE_Q2_K,
@@ -109,8 +117,15 @@ __type_to_dtype_dict = {
   lib.GGML_TYPE_F32: np.float32,
 }
 
+# TODO: remove
 def type_to_dtype(type: int):
   return __type_to_dtype_dict.get(type)
+
+def __describe(tensor: ffi.CType) -> str:
+    shape = __get_shape(tensor)
+    t = __type_name(tensor.type)
+    return f'Tensor[{t}, {shape}]' 
+    # return lib.ggml_type_name(type)
 
 # Note: dtype doesn't seem hashable
 def __dtype_to_type(dtype: np.dtype):
@@ -129,7 +144,7 @@ def __get_nbytes(tensor: TensorLike): return tensor.nbytes if isinstance(tensor,
 def __get_nelements(tensor: TensorLike): return tensor.size if isinstance(tensor, np.ndarray) else lib.ggml_nelements(tensor)
 
 # TODO(ochafik): Check strides too / is each tensor contiguous?
-def __expect_same_layout(name1: str, tensor1: TensorLike, name2: str, tensor2: TensorLike):
+def __expect_same_layout(name1: str, tensor1: TensorLike, name2: str, tensor2:   TensorLike):
     shape1, shape2 = __get_shape(tensor1), __get_shape(tensor2)
     if shape1 != shape2:
         raise ValueError(f"Shape mismatch: {name1} has {shape1} but {name2} has {shape2}")
@@ -145,9 +160,10 @@ def __get_floats(tensor: TensorLike) -> ffi.CData:
           lib.ggml_fp16_to_fp32_row(data, floats, nelements)
       elif lib.ggml_is_quantized(type):
           qtype = lib.ggml_internal_get_type_traits(type)
+          assert qtype.to_float, f"Type {__type_name(type)} is not supported by ggml"
           qtype.to_float(data, floats, nelements)
       else:
-          raise NotImplementedError(f'Cannot read floats from tensor of type {tensor.type}')
+          raise NotImplementedError(f'Cannot read floats from {__describe(tensor)}')
       return floats
 
 def __set_floats(tensor: TensorLike, f32_data: ffi.CData) -> None:
@@ -160,9 +176,10 @@ def __set_floats(tensor: TensorLike, f32_data: ffi.CData) -> None:
           lib.ggml_fp32_to_fp16_row(f32_data, data, nelements)
       elif lib.ggml_is_quantized(type):
           qtype = lib.ggml_internal_get_type_traits(type)
+          assert qtype.from_float, f"Type {__type_name(type)} is not supported by ggml"
           qtype.from_float(f32_data, data, nelements)
       else:
-          raise NotImplementedError(f'Cannot write floats to tensor of type {tensor.type}')
+          raise NotImplementedError(f'Cannot write floats to {__describe(tensor)}')
 
 def __check_shape_consistent_with_type(tensor: ffi.CData):
     type = __get_type(tensor)

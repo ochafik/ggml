@@ -1,6 +1,29 @@
 """
   Python bindings for the ggml library.
 
+  Usage example:
+
+      from ggml import lib, ffi
+      from ggml.utils import init, copy, numpy
+      import numpy as np
+
+      ctx = init(mem_size=10*1024*1024)
+      n = 1024
+      n_threads = 4
+
+      a = lib.ggml_new_tensor_1d(ctx, lib.GGML_TYPE_Q5_K, n)
+      b = lib.ggml_new_tensor_1d(ctx, lib.GGML_TYPE_F32, n)
+      sum = lib.ggml_add(ctx, a, b)
+
+      gf = ffi.new('struct ggml_cgraph*')
+      lib.ggml_build_forward_expand(gf, sum)
+
+      copy(np.array([i for i in range(n)], np.float32), a)
+      copy(np.array([i*100 for i in range(n)], np.float32), b)
+      lib.ggml_graph_compute_with_ctx(ctx, gf, n_threads)
+
+      print(numpy(sum, allow_copy=True))
+
   This module is just a convenient hub to import the cffi-generated
   wrappers, supporting the two ways they can be built.
 
@@ -25,16 +48,19 @@
 ########################################################################################################################
 
 # If the following import fails, you haven't run `python generate.py` yet.
-from ggml.cffi import ffi as ffi
-import os
+try:
+    from ggml.cffi import ffi as ffi
+except ImportError:
+    raise ImportError("Couldn't find ggml bindings. Run `python generate.py` first, or check your PYTHONPATH.")
 
 try:
-  # Try to import the "out-of-line" (compiled extension) version of the library.
-  from ggml.cffi import lib as _lib
+    # Try to import the "out-of-line" (compiled extension) version of the library.
+    from ggml.cffi import lib as _lib
 except ImportError:
-  # We've only got Python bindings, so we need to load the library manually.
-  # If the following line fails, add the directory containing the .so to DYLD_LIBRARY_PATH (on Mac) or LD_LIBRARY_PATH.
-  _lib = ffi.dlopen(os.environ.get("GGML_PY_SO") or "libllama.so")
+    import os
+    # We've only got Python bindings, so we need to load the library manually.
+    # If the following line fails, add the directory containing the .so to DYLD_LIBRARY_PATH (on Mac) or LD_LIBRARY_PATH.
+    _lib = ffi.dlopen(os.environ.get("GGML_PY_SO") or "libllama.so")
 
 # This is where all the functions, enums and constants are defined
 lib = _lib

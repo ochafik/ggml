@@ -1,22 +1,21 @@
 from ggml import ffi, lib
-from ggml.utils import numpy, copy, type_to_dtype, calc_tensor_size
+from ggml.utils import init, numpy, copy, type_to_dtype
 import numpy as np
 
-def set_floats_1d(t, values):
-    for i, f in enumerate(values):
-        lib.ggml_set_f32_1d(t, i, f)
-
-def get_floats_1d(t):
-    n = lib.ggml_nelements(t)
-    return [lib.ggml_get_f32_1d(t, i) for i in range(n)]
+def calc_tensor_size(type: int, shape: tuple[int]) -> int:
+    """
+        Calculate the number of bytes required to store a tensor of the given type and shape.
+    """
+    size = lib.ggml_type_size(type)
+    for dim in shape:
+        size *= dim
+    return size / lib.ggml_blck_size(type)
 
 if __name__ == '__main__':
     n_threads = 4
     n = 256
 
-    params = ffi.new('struct ggml_init_params*')
-    params.mem_size = 12000000
-    ctx = lib.ggml_init(params[0])
+    ctx = init(mem_size = 1200000)
 
     # type = lib.GGML_TYPE_I8
     type = lib.GGML_TYPE_Q4_0
@@ -27,6 +26,8 @@ if __name__ == '__main__':
 
     # qtype = lib.GGML_TYPE_Q4_0
     qtype = lib.GGML_TYPE_Q8_0
+
+    lib.bad()
 
     # a = lib.ggml_new_tensor_1d(ctx, type, n)
     # b = lib.ggml_new_tensor_1d(ctx, type, n)
@@ -75,6 +76,9 @@ if __name__ == '__main__':
     print(numpy(c, allow_copy=True))
 
     shape = (512, 256)
-    # # lib.ggml_get_data(c)
+    nbytes = calc_tensor_size(lib.GGML_TYPE_Q5_K, shape)
+    print(f'nbytes = {nbytes}')
+    arr = np.zeros(nbytes, dtype=np.uint8).reshape(shape)
+    # copy(np.array())
 
-    lib.ggml_free(ctx)
+    # # lib.ggml_get_data(c)
