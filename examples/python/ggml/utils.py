@@ -1,9 +1,10 @@
 """
-  Common helpers for working with ggml tensors and numpy arrays.
+  Common helpers for working with ggml and numpy
 """
 from ggml import ffi, lib
 from typing import Union
 import numpy as np
+import sys
 
 TensorLike = Union[ffi.CData, np.ndarray]
 
@@ -186,12 +187,12 @@ def __check_shape_consistent_with_type(tensor: ffi.CData):
     if not lib.ggml_is_quantized(type):
         return
     shape = __get_shape(tensor)
-    if len(shape) > 2:
-        raise ValueError(f"No support for quantized tensors with {tensor.n_dims} dimensions")
+
     block_size = lib.ggml_blck_size(type)
     if block_size == 0 and type in __k_quant_types:
         raise ValueError(f"Can't quantize, native library was not compiled with USE_K_QUANTS!")
-    assert(block_size > 0)
-    if (shape[0] % block_size != 0 or (len(shape) > 1 and shape[1] % block_size != 0)):
-        raise ValueError(f"Tensor sizes {shape} are not divisible by {block_size}, required for quantization.")
+    assert block_size > 0, f"Invalid block size {block_size} for type {__type_name(type)}"
+    for i, d in enumerate(shape):
+        if d % block_size != 0:
+            raise ValueError(f"Dimension {i} of {__describe(tensor)} is not divisible by {block_size}, required for quantization.")
 
