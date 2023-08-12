@@ -15,13 +15,8 @@ rm -fR ggml/cffi.*
 
 # Default env options: DEBUG=0 COMPILE=1 USE_LLAMA=1
 python generate.py
-python generate_stubs.py ../../../llama.cpp/{k_quants,ggml*}.h
-# ls ggml/*
-#     cffi.c
-#     cffi.o
-#     cffi.cpython-310-darwin.so
 
-# All good, just run this:
+# All done, now just test things:
 python example.py
 ```
 
