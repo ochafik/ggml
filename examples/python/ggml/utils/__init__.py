@@ -1,9 +1,7 @@
+"""
+  Common helpers for working with ggml tensors and numpy arrays.
+"""
 from ggml import ffi, lib
-
-########################################################################################################################
-# Common helpers (copy, numpy, etc.)
-########################################################################################################################
-
 from typing import Union
 import numpy as np
 
