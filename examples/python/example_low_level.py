@@ -35,6 +35,10 @@ if __name__ == '__main__':
     aq = lib.ggml_new_tensor_2d(ctx, lib.GGML_TYPE_Q8_0, n, n)
     b = lib.ggml_new_tensor_2d(ctx, lib.GGML_TYPE_F32, n, n)
 
+    rr = lib.ggml_new_tensor_2d(ctx, lib.GGML_TYPE_Q4_0, n, n)
+    copy(np.random.rand(n * n).astype(np.float32).reshape((n, n)), rr)
+    print(f'rr = {numpy(rr, allow_copy=True)}')
+
     # copy(np.array([i for i in range(n)]).astype(dtype), a)
     # copy(np.array([i + 100000 for i in range(n)]).astype(dtype), b)
 

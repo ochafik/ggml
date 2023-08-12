@@ -119,7 +119,7 @@ def __dtype_to_type(dtype: np.dtype):
     elif dtype == np.int32: return lib.GGML_TYPE_I32
     elif dtype == np.int16: return lib.GGML_TYPE_I16
     elif dtype == np.int8: return lib.GGML_TYPE_I8
-    else: return None
+    else: raise ValueError(f"Unsupported dtype: {dtype}")
 
 def __get_type(tensor: TensorLike): return __dtype_to_type(tensor.dtype) if isinstance(tensor, np.ndarray) else tensor.type
 def __get_shape(x: TensorLike): return x.shape if isinstance(x, np.ndarray) else tuple([x.ne[i] for i in range(x.n_dims)])
@@ -166,7 +166,8 @@ def __set_floats(tensor: TensorLike, f32_data: ffi.CData) -> None:
 
 def __check_shape_consistent_with_type(tensor: ffi.CData):
     type = __get_type(tensor)
-    if not lib.ggml_is_quantized(type): return
+    if not lib.ggml_is_quantized(type):
+        return
     shape = __get_shape(tensor)
     if len(shape) > 2:
         raise ValueError(f"No support for quantized tensors with {tensor.n_dims} dimensions")
