@@ -1,5 +1,5 @@
 from ggml import ffi, lib
-from ggml.utils import numpy, copy, type_to_dtype
+from ggml.utils import numpy, copy, type_to_dtype, calc_tensor_size
 import numpy as np
 
 def set_floats_1d(t, values):
@@ -74,6 +74,7 @@ if __name__ == '__main__':
     print(numpy(b, allow_copy=True))
     print(numpy(c, allow_copy=True))
 
+    shape = (512, 256)
     # # lib.ggml_get_data(c)
 
     lib.ggml_free(ctx)

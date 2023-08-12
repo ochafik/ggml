@@ -175,6 +175,6 @@ def __check_shape_consistent_with_type(tensor: ffi.CData):
     if block_size == 0 and type in __k_quant_types:
         raise ValueError(f"Can't quantize, native library was not compiled with USE_K_QUANTS!")
     assert(block_size > 0)
-    if (shape[0] % block_size != 0 or shape[1] % block_size != 0):
+    if (shape[0] % block_size != 0 or (len(shape) > 1 and shape[1] % block_size != 0)):
         raise ValueError(f"Tensor sizes {shape} are not divisible by {block_size}, required for quantization.")
 
