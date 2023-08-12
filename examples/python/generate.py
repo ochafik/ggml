@@ -134,6 +134,7 @@ else:
 
 ffibuilder = cffi.FFI()
 ffibuilder.set_source(
+    # This says to generate ggml/cffi.py or ggml/cffi.c
     "ggml.cffi",
     "\n".join(list(map(read_text, source_files))) if compile else None,
     extra_link_args=["-lm"],
