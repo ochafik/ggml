@@ -115,9 +115,9 @@ def prettify_header(header_files: list[Path], defines: list[str]) -> str:
     # Run preprocessor w/o any #includes (assume self-contained header, avoids noise from system defines)
     header = "\n".join([l for l in header.splitlines() if not re.match(r'^\s*#\s*include', l)])
     header = preprocess(header, *defines + [
-        # '-Ddeprecated(x)=',
-        # '-D__attribute__(x)=',
-        # '-Dstatic_assert(x, m)=',
+        '-Ddeprecated(x)=',
+        '-D__attribute__(x)=',
+        '-Dstatic_assert(x, m)=',
     ])
     
     # Find all sizeof exprs and simple array bracket expressions constant and replace them w/ values computed by adhoc executables (because why not)
