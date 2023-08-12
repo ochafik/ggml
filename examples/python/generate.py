@@ -106,7 +106,7 @@ def generate(
         ggml_package: str = 'ggml',
         build_dir: Path = None,
         all_headers: Optional[bool] = None,
-        use_llama: bool = True,
+        use_llama_cpp: bool = True,
         k_quants: Optional[bool] = None,
         accelerate: bool = platform.system() == 'Darwin',
         debug: bool = False,
@@ -124,24 +124,20 @@ def generate(
         opencl = True
         alloc = True
 
-    if use_llama:
+    if use_llama_cpp:
         if not llama_dir.is_dir():
-            raise Exception(f'llama.cpp not found. set --use_llama=false or point --llama_dir to the right location')
+            raise Exception(f'llama.cpp not found. set --use_llama_cpp=false or point --llama_dir to the right location')
 
         if k_quants is None:
             k_quants = True
 
         include_dir = llama_dir
         src_dir = llama_dir
-        # lib_dir = llama_dir
-        objects_dir = llama_dir
     else:
         assert not k_quants, 'ggml does not support k_quants yet (if it does, please update this check!)'
 
         include_dir = ggml_dir / 'include' / 'ggml'
         src_dir = ggml_dir / 'src'
-        # lib_dir = ggml_dir
-        objects_dir = ggml_dir
 
     if mode in ['static_link', 'dynamic_link']:
         assert build_dir is not None, f'build_dir must be specified when using {mode}'
@@ -231,7 +227,7 @@ def generate(
             SOURCE += "\n" + "\n".join(list(map(__read_text, source_files)))
         elif mode == 'static_link':
             object_files = [
-                find_file_by_name([f'{n}.o', f'{n}.c.o', f'{n}.cpp.o'], objects_dir, recurse=True)
+                find_file_by_name([f'{n}.o', f'{n}.c.o', f'{n}.cpp.o'], build_dir, recurse=True)
                 for n in units
             ]
             LDFLAGS += [f.as_posix() for f in object_files]

@@ -1,6 +1,7 @@
 from ggml import ffi, lib
 from ggml.utils import init, numpy, copy, type_to_dtype
 import numpy as np
+import os
 
 def calc_tensor_size(type: int, shape: tuple[int]) -> int:
     """
@@ -31,41 +32,47 @@ if __name__ == '__main__':
 
     # a = lib.ggml_new_tensor_1d(ctx, type, n)
     # b = lib.ggml_new_tensor_1d(ctx, type, n)
+
     a = lib.ggml_new_tensor_2d(ctx, lib.GGML_TYPE_Q4_0, n, n)
-    aq1 = lib.ggml_new_tensor_2d(ctx, lib.GGML_TYPE_Q8_0, n, n)
-    aq2 = lib.ggml_new_tensor_2d(ctx, lib.GGML_TYPE_Q6_K, n, n)
     b = lib.ggml_new_tensor_2d(ctx, lib.GGML_TYPE_F32, n, n)
+    c = lib.ggml_add(ctx, a, b)
 
-    rr = lib.ggml_new_tensor_2d(ctx, lib.GGML_TYPE_Q4_0, n, n)
-    copy(np.random.rand(n * n).astype(np.float32).reshape((n, n)), rr)
-    print(f'rr = {numpy(rr, allow_copy=True)}')
+    if os.environ.get('TEST_K_QUANTS', '1') == '1':
 
-    # copy(np.array([i for i in range(n)]).astype(dtype), a)
-    # copy(np.array([i + 100000 for i in range(n)]).astype(dtype), b)
+        aq1 = lib.ggml_new_tensor_2d(ctx, lib.GGML_TYPE_Q8_0, n, n)
+        aq2 = lib.ggml_new_tensor_2d(ctx, lib.GGML_TYPE_Q6_K, n, n)
 
-    copy(np.array([(i) for i in range(n * n)]).astype(dtype).reshape((n, n)), a)
+        rr = lib.ggml_new_tensor_2d(ctx, lib.GGML_TYPE_Q4_0, n, n)
+        copy(np.random.rand(n * n).astype(np.float32).reshape((n, n)), rr)
+        print(f'rr = {numpy(rr, allow_copy=True)}')
 
-    copy(a, aq1)
-    copy(a, aq2)
-    print("QUANTIZED!")
-    print(numpy(a, allow_copy=True))
-    print(numpy(aq1, allow_copy=True))
-    print(numpy(aq2, allow_copy=True))
+        # copy(np.array([i for i in range(n)]).astype(dtype), a)
+        # copy(np.array([i + 100000 for i in range(n)]).astype(dtype), b)
 
-    copy(np.array([(i * 2) for i in range(n * n)]).astype(dtype).reshape((n, n)), b)
+        copy(np.array([(i) for i in range(n * n)]).astype(dtype).reshape((n, n)), a)
+
+        copy(a, aq1)
+        copy(a, aq2)
+        print("QUANTIZED!")
+        print(numpy(a, allow_copy=True))
+        print(numpy(aq1, allow_copy=True))
+        print(numpy(aq2, allow_copy=True))
+
+        c = lib.ggml_add(ctx, aq1, c)
+        c = lib.ggml_add(ctx, aq2, c)
+
     # copy(np.ones((n, n), dtype=dtype), a)
     # copy(np.random.rand(n, n).astype(dtype), b)
 
     # copy(np.ones((n, n), dtype=dtype), b)
 
-    c = lib.ggml_add(ctx, a, b)
-    c = lib.ggml_add(ctx, aq1, c)
-    c = lib.ggml_add(ctx, aq2, c)
     # c = lib.ggml_mul(ctx, c, c)
     c = lib.ggml_mul_mat(ctx, a, b)
 
     c = lib.ggml_mul(ctx, c, c)
 
+    copy(np.array([(i * 2) for i in range(n * n)]).astype(dtype).reshape((n, n)), b)
+    
     gf = ffi.new('struct ggml_cgraph*')
     lib.ggml_build_forward_expand(gf, c)
     lib.ggml_graph_compute_with_ctx(ctx, gf, n_threads)
