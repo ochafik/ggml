@@ -1,13 +1,45 @@
+"""
+  This generates bindings for the ggml library using cffi and .pyi stubs for the Python bindings.
+
+  See the various environment variables at the top of this file for options.
+"""
+
 import cffi
 import subprocess
 import re
 import os
 from sys import argv
 from pathlib import Path
+from generate_stubs import generate_stubs
 
+this_dir = Path('.')
+
+# C compiler to use (both for preprocessing and to evaluate some constant expressions)
 c_compiler = os.environ.get('CC') or 'gcc'
 
-def eval_size_expr(expr: str, header_files: list[Path], *args: list[str]) -> int:
+# Whether to use the headers & implementation of the llama.cpp library instead of ggml.
+# This is currently useful as the ggml repo seems to be lagging behind the llama.cpp repo.
+# (for instance, k_quants are only available in llama.cpp for now)
+use_llama = os.environ.get('USE_LLAMA', '1') == '1'
+
+# Whether to have cffi compile a native extension. It's what they call “out-of-line” + "API mode".
+# If set to `0`, we're in “out-of-line” + “ABI mode” and cffi will only generate a ggml/cffi.py file
+# that contains serialized type information and a few helpers to load the shared library.
+compile = os.environ.get('COMPILE', '1') == '1'
+
+# Build the native extension with debug symbols and no optimizations.
+debug = os.environ.get('DEBUG', '0') == '1'
+
+# Where to find the llama.cpp repo if USE_LLAMA is set to `1`.
+llama_dir = Path(os.environ.get('LLAMA_DIR', (this_dir / '..' / '..' / '..' / 'llama.cpp').as_posix()))
+
+
+def eval_size_expr(expr: str, header_files: list[Path], *args: list[str]) -> str:
+    """
+      Evaluates a constant C++ size expression using the C compiler.
+
+      (e.g. `eval_size_expr("sizeof(uint64_t) / 2")` returns '4'
+    """
     try:
         includes = '\n'.join([f'#include "{f.as_posix()}"' for f in header_files])
         subprocess.run(
@@ -33,86 +65,11 @@ def write_text(p: Path, s: str):
   with p.open('wt') as f:
     return f.write(s)
 
-import re
-from sys import argv
-
-def to_type(t):
-  t = t.strip()
-  if t.endswith('*'):
-    return 'ffi.CData'
-  elif t.startswith('struct '):
-    return 'ffi.CData'
-  elif t.startswith('enum ') or t in ['int', 'int64_t', 'size_t', 'int32_t', 'int16_t', 'int8_t', 'uint64_t', 'uint32_t', 'uint16_t', 'uint8_t']:
-    return 'int'
-  elif t in ['float', 'double']:
-    return 'float'
-  elif t == 'void':
-    return 'None'
-  elif t == 'bool':
-    return 'bool'
-  print('## Unknown type:', t)
-  return None
-
-def format_arg(t, n):
-  t = to_type(t)
-  return n if t is None else f'{n}: {t}'
-
-def format_ret(t):
-  t = to_type(t)
-  return '' if t is None else f' -> {t}'
-
-def generate_stubs(in_files: list[Path]):
-    """
-      Generates a .pyi Python stub file for the GGML API using C header files.
-
-      The idea is to remove comments, then unbreak functions declared across multiple lines,
-      the pseudo-parse the function name, return type, args and their types. Simple yet efficient.
-    """
-    original_header = '\n'.join([read_text(f) for f in in_files])
-    header = original_header
-
-    # Remove comments and ~ensure each GGML_API function is on a single line
-    header = re.sub(r'/\*.*?\*/', '', header, flags=re.M | re.S)
-    header = re.sub(r'//.*([\n\r])', '\\1', header)
-    header = re.sub('([(,])\\s*[\\n\\r]\\s*', r'\1', header, flags=re.M | re.S)
-    header = re.sub(r'[ \t]+', ' ', header)
-    header = re.sub(r'\(\s*void\s*\)', '()', header)
-
-    apis = list(set([l.strip() for l in header.splitlines() if 'GGML_API' in l and 'GGML_DEPRECATED' not in l]))
-    apis.sort()
-
-    lib = ['class lib:']
-    for api in apis:
-        m = re.search(r'GGML_API\s*(.*?)\b(\w+)\s*\(([^)]*)\)\s*;', api)
-        if m is not None:
-            try:
-                (rettype, name, arglist) = m.groups()
-                arglist = [a.strip() for a in arglist.split(',')]
-                
-                args = []
-                for arg in arglist:
-                    if arg.strip() == '':
-                        continue
-                    if arg == '...':
-                        args.append('*args')
-                    else:
-                        am = re.search(r'^(.+?)\b(\w+)$', arg)
-                        args.append(format_arg(am.group(1), am.group(2)))
-                  
-                lib += [
-                    f'  # {api}', 
-                    f'  def {name}({", ".join(args)}){format_ret(rettype)}: ...',
-                    ''
-                ]
-            except:
-                print('## Error parsing:', api)
-                raise
-    return '\n'.join(lib)
-
 def prettify_header(header_files: list[Path], defines: list[str]) -> str:
     header = '\n'.join([read_text(f) for f in header_files])
 
     # Run preprocessor w/o any #includes (assume self-contained header, avoids noise from system defines)
+    # Also, remove exotic annotations / calls that pycparser / cffi don't like.
     header = "\n".join([l for l in header.splitlines() if not re.match(r'^\s*#\s*include', l)])
     header = preprocess(header, *defines + [
         '-Ddeprecated(x)=',
@@ -120,37 +77,23 @@ def prettify_header(header_files: list[Path], defines: list[str]) -> str:
         '-Dstatic_assert(x, m)=',
     ])
     
-    # Find all sizeof exprs and simple array bracket expressions constant and replace them w/ values computed by adhoc executables (because why not)
+    # pycparser (which powers cffi) doesn't like constant size expressions, so we
+    # replace them with their values as part of our preprocessing.
+    #
+    # This regexp finds anyting *inside* square brackets (matched with lookbehind & lookahead)
+    # and anything that looks like a sizeof call.
     constexpr_re = f'(?<=\\[)[^\\]]+(?=])|sizeof\\s*\\([^()]+\\)'
-    constexprs = set([
-       s for s in [
-          m.group(0).strip()
-          for m in re.finditer(constexpr_re, header)
-       ] 
-       if s != '' and not re.match(r'^\d+$', s)
-    ])
-    evals = {
+    constexprs = {
        e: eval_size_expr(e, header_files, *defines)
-       for e in constexprs
+       for e in set(re.findall(constexpr_re, header))
+       if not re.match(r'^(\d+|\s*)$', e)
     }
-    print(f'constexpr evals: {evals}')
-    assert('sizeof(struct ggml_tensor)' in evals)
-
-    for k, v in evals.items():
-      header = header.replace(k, str(v))
-
-    # Replace static size_t constants w/ macros and run preprocessor again to expand them
-    header = re.sub(r'static\s+const\s+size_t\s+(\w+)\s*=\s*([0-9]+)\s*;', r'#define \1 \2', header)
-    header = preprocess(header, *defines)
+    print(f'constexprs: {constexprs}')
+    assert('sizeof(struct ggml_tensor)' in constexprs) # sanity check
+    for expr, v in constexprs.items():
+      header = header.replace(expr, v)
 
     return header
-
-this_dir = Path('.')
-
-use_llama = os.environ.get('USE_LLAMA', '1') == '1'
-compile = os.environ.get('COMPILE', '1') == '1'
-debug = os.environ.get('DEBUG', '0') == '1'
-llama_dir = Path(os.environ.get('LLAMA_DIR', (this_dir / '..' / '..' / '..' / 'llama.cpp').as_posix()))
 
 if use_llama:
     include_dir = llama_dir
@@ -159,7 +102,6 @@ if use_llama:
     header_files = [
         include_dir / 'ggml.h',
         # include_dir / 'ggml-alloc.h',
-        # include_dir / 'ggml-mpi.h',
     ]
     source_files = [
         src_dir / 'k_quants.c',
@@ -180,10 +122,10 @@ defines = [
     '-DGGML_USE_K_QUANTS',
 ]
 
-header = prettify_header(header_files, defines)
+preprocessed_header = prettify_header(header_files, defines)
 # pycparser doesn't support __fp16, so replace it with uint16_t
 # *but* don't do this with macros.
-header = 'typedef uint16_t __fp16;\n' + header
+preprocessed_header = 'typedef uint16_t __fp16;\n' + preprocessed_header
 
 if debug:
     opt_flags = ['-g', '-O0']
@@ -199,20 +141,23 @@ ffibuilder.set_source(
       (["-I", include_dir.as_posix()] if compile else []),
 )
 try:
-  ffibuilder.cdef(header)
+  ffibuilder.cdef(preprocessed_header)
   ffibuilder.compile(verbose=True)
 except:
-  print(header)
+  print(preprocessed_header)
   raise
 
+# Read the header(s) again, this time to generate stubs for the Python side.
+header = '\n'.join([read_text(f) for f in header_files])
+
 write_text(Path('ggml') / '__init__.pyi', f'''#
-# AUTOGENERATED FILE, DO NOT EDIT
+# AUTOGENERATED STUB FILE, DO NOT EDIT
 # TO REGENERATE, RUN:
 #
-#     python3 generate_stubs.py {' '.join(argv[1:])}
+#     python generate.py
 #
-import ggml.ffi2 as ffi
+import ggml.ffi as ffi
 
-# ggml library
-{generate_stubs(header_files)}
+# ggml library (cffi bindings)
+{generate_stubs(header)}
 ''')
