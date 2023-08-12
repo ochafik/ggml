@@ -18,9 +18,9 @@ def write_text(p, s):
 def to_type(t):
   t = t.strip()
   if t.endswith('*'):
-    return '_ffi.CData'
+    return 'ffi.CData'
   elif t.startswith('struct '):
-    return '_ffi.CData'
+    return 'ffi.CData'
   elif t.startswith('enum ') or t in ['int', 'int64_t', 'size_t', 'int32_t', 'int16_t', 'int8_t', 'uint64_t', 'uint32_t', 'uint16_t', 'uint8_t']:
     return 'int'
   elif t in ['float', 'double']:
@@ -97,7 +97,7 @@ if __name__ == '__main__':
 #
 #     python3 generate_stubs.py {' '.join(argv[1:])}
 #
-import ggml.ffi as _ffi
+import ggml.ffi as ffi
 
 # ggml library
 {generate_stubs(argv[1:])}
