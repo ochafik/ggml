@@ -10,7 +10,7 @@ import re
 import os
 from sys import argv
 from pathlib import Path
-from generate_stubs import generate_stubs
+from stubs_generator import generate_stubs
 
 this_dir = Path('.')
 
