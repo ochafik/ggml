@@ -3,4 +3,5 @@
 #include "ggml-cuda.h"
 #include "ggml-opencl.h"
 #include "ggml-metal.h"
+#include "ggml-mpi.h"
 #include "k_quants.h"
