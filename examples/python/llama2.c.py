@@ -7,6 +7,7 @@
 # cmake ../../../llama.cpp -B /tmp/llama_debug -DLLAMA_METAL=1 -DBUILD_SHARED_LIBS=1 -DCMAKE_BUILD_TYPE=Debug && ( cd /tmp/llama_debug && make -j )
 import os; os.environ['GGML_LIBRARY'] = '/tmp/llama_debug/libggml_shared.dylib'
 
+# python llama2.c.py ~/AI/Models/llama2.c.stories15M.bin ../../../llama2.c/tokenizer.bin --prompt "Hello, world"
 
 from ggml import lib, ffi
 from ggml.utils import init, numpy, copy
@@ -75,20 +76,20 @@ class TransformerWeights:
     wcls: Tensor
 
     def __init__(self, p: Config, ctx: Context, type: int, shared_weights: bool):
-        self.token_embedding_table = _new_tensor(ctx, (p.vocab_size, p.dim), type)
+        self.token_embedding_table = _new_tensor(ctx, (p.dim, p.vocab_size), type)
         self.rms_att_weight = [_new_tensor(ctx, (p.dim,), type) for _ in range(p.n_layers)]
         self.rms_ffn_weight = [_new_tensor(ctx, (p.dim,), type) for _ in range(p.n_layers)]
         self.wq = [_new_tensor(ctx, (p.dim, p.dim), type) for _ in range(p.n_layers)]
         self.wk = [_new_tensor(ctx, (p.dim, p.dim), type) for _ in range(p.n_layers)]
         self.wv = [_new_tensor(ctx, (p.dim, p.dim), type) for _ in range(p.n_layers)]
         self.wo = [_new_tensor(ctx, (p.dim, p.dim), type) for _ in range(p.n_layers)]
-        self.w1 = [_new_tensor(ctx, (p.hidden_dim, p.dim), type) for _ in range(p.n_layers)]
-        self.w2 = [_new_tensor(ctx, (p.dim, p.hidden_dim), type) for _ in range(p.n_layers)]
-        self.w3 = [_new_tensor(ctx, (p.hidden_dim, p.dim), type) for _ in range(p.n_layers)]
+        self.w1 = [_new_tensor(ctx, (p.dim, p.hidden_dim), type) for _ in range(p.n_layers)]
+        self.w2 = [_new_tensor(ctx, (p.hidden_dim, p.dim), type) for _ in range(p.n_layers)]
+        self.w3 = [_new_tensor(ctx, (p.dim, p.hidden_dim), type) for _ in range(p.n_layers)]
         self.rms_final_weight = _new_tensor(ctx, (p.dim,), type)
-        self.freq_cis_real = _new_tensor(ctx, (p.seq_len, p.n_heads // 2), type)
-        self.freq_cis_imag = _new_tensor(ctx, (p.seq_len, p.n_heads // 2), type)
-        self.wcls = _new_tensor(ctx, (p.dim, p.vocab_size), type) if shared_weights else self.token_embedding_table
+        self.freq_cis_real = _new_tensor(ctx, (p.n_heads // 2, p.seq_len), type)
+        self.freq_cis_imag = _new_tensor(ctx, (p.n_heads // 2, p.seq_len), type)
+        self.wcls = _new_tensor(ctx, (p.vocab_size, p.dim), type) if shared_weights else self.token_embedding_table
 
 # struct used when sorting probabilities during top-p sampling
 @dataclass
@@ -153,6 +154,10 @@ rms_norm_eps = 1e-5
 rope_freq_base  = 10000.0
 rope_freq_scale = 1.0
 
+def info(x: Tensor, name: str): 
+    a = numpy(x)
+    print(name, a.shape)#, a)
+
 def build_transformer_graph(ctx, token: ScalarTensor, pos: int, p: Config, s: RunState, w: TransformerWeights):
 
     # a few convenience variables
@@ -161,7 +166,12 @@ def build_transformer_graph(ctx, token: ScalarTensor, pos: int, p: Config, s: Ru
     head_size = dim // p.n_heads
 
     # copy the token embedding into x
+    info(w.token_embedding_table, "token_embedding_table")
+    info(token, "token")
+    # x = lib.ggml_get_rows(ctx, w.token_embedding_table, token)
     x = lib.ggml_get_rows(ctx, w.token_embedding_table, token)
+    info(x, "x")
+    assert(numpy(x).shape == (dim, 1))
 
 
     # # pluck out the "pos" row of freq_cis_real and freq_cis_imag
@@ -169,17 +179,30 @@ def build_transformer_graph(ctx, token: ScalarTensor, pos: int, p: Config, s: Ru
     # freq_cis_imag_row = w.freq_cis_imag + pos * head_size / 2
 
     # forward all the layers
+
     for l in range(p.n_layers):
+        # in llama.cpp:
+        #   inpSA = inpL,
+        #   cur gets rmsnorm, then attention norm
+        #   then cur gets projected onto K, Q
+        #   ...
+
+        # llama2.c -> llama.cpp
+        #   x -> inpL
+        #   xb gets rmsnorm(x), and it gets projected onto q, k, v
+        #   
 
         # attention rmsnorm
         x = lib.ggml_rms_norm(ctx, x, rms_norm_eps)
+        info(x, "x")
+        info(w.rms_att_weight[l], "rms_att_weight")
         x = lib.ggml_mul(ctx, x, w.rms_att_weight[l])
         
         # qkv matmuls for this position
         tmpk = lib.ggml_mul_mat(ctx, w.wk[l], x)
         tmpq = lib.ggml_mul_mat(ctx, w.wq[l], x)
-        Kcur = lib.ggml_rope_custom_inplace(ctx, lib.ggml_reshape_3d(ctx, tmpk, n_embd_head, n_head_kv, N), n_past, n_embd_head, 0, 0, rope_freq_base, rope_freq_scale)
-        Qcur = lib.ggml_rope_custom_inplace(ctx, lib.ggml_reshape_3d(ctx, tmpq, n_embd_head, n_head, N),    n_past, n_embd_head, 0, 0, rope_freq_base, rope_freq_scale)
+        Kcur = lib.ggml_rope_custom_inplace(ctx, lib.ggml_reshape_3d(ctx, tmpk, p.n_heads, p.n_kv_heads, N), n_past, p.n_heads, 0, 0, rope_freq_base, rope_freq_scale)
+        Qcur = lib.ggml_rope_custom_inplace(ctx, lib.ggml_reshape_3d(ctx, tmpq, p.n_heads, n_head, N),    n_past, p.n_heads, 0, 0, rope_freq_base, rope_freq_scale)
 
 
         tmpv = lib.ggml_mul_mat(ctx, w.wv[l], x)
@@ -204,13 +227,13 @@ def build_transformer_graph(ctx, token: ScalarTensor, pos: int, p: Config, s: Ru
 #         K = lib.ggml_permute(ctx,
 #                     lib.ggml_reshape_3d(ctx,
 #                         lib.ggml_view_1d(ctx, kv_self.k, (n_past + N)*n_embd_gqa, il*n_ctx*lib.ggml_element_size(kv_self.k)*n_embd_gqa),
-#                         n_embd_head, n_head_kv, n_past + N),
+#                         p.n_heads, p.n_kv_heads, n_past + N),
 #                     0, 2, 1, 3)
         
 #         # K * Q
 #         KQ = lib.ggml_mul_mat(ctx, K, Q)
         
-#         # KQ_scaled = KQ / sqrt(n_embd_head)
+#         # KQ_scaled = KQ / sqrt(p.n_heads)
 #         # KQ_scaled shape [n_past + N, N, n_head, 1]
 #         KQ_scaled = lib.ggml_scale_inplace(ctx, KQ, KQ_scale)
         
@@ -222,9 +245,9 @@ def build_transformer_graph(ctx, token: ScalarTensor, pos: int, p: Config, s: Ru
 
 #         # split cached V into n_head heads
 #         V = lib.ggml_view_3d(ctx, kv_self.v,
-#                     n_past + N, n_embd_head, n_head_kv,
+#                     n_past + N, p.n_heads, p.n_kv_heads,
 #                     n_ctx*lib.ggml_element_size(kv_self.v),
-#                     n_ctx*lib.ggml_element_size(kv_self.v)*n_embd_head,
+#                     n_ctx*lib.ggml_element_size(kv_self.v)*p.n_heads,
 #                     n_ctx*lib.ggml_element_size(kv_self.v)*n_embd_gqa*il)
         
 
@@ -406,7 +429,7 @@ def bpe_encode(text: str, v: Vocabulary) -> list[int]:
 
     return tokens
 
-def read_tensor(f, tensor):
+def read_tensor(name: str, f, tensor: ffi.CData):
     shape = tuple([tensor.ne[i] for i in range(tensor.n_dims)])
     nbytes = np.prod(shape) * ffi.sizeof('float')
     copy(np.frombuffer(f.read(nbytes), dtype=np.float32).reshape(shape), tensor)
@@ -438,21 +461,21 @@ def run(
     tensor_type = lib.GGML_TYPE_F32
 
     weights = TransformerWeights(config, ctx, tensor_type, shared_weights)
-    read_tensor(mm, weights.token_embedding_table)
-    for i in range(config.n_layers): read_tensor(mm, weights.rms_att_weight[i])
-    for i in range(config.n_layers): read_tensor(mm, weights.wq[i])
-    for i in range(config.n_layers): read_tensor(mm, weights.wk[i])
-    for i in range(config.n_layers): read_tensor(mm, weights.wv[i])
-    for i in range(config.n_layers): read_tensor(mm, weights.wo[i])
-    for i in range(config.n_layers): read_tensor(mm, weights.rms_ffn_weight[i])
-    for i in range(config.n_layers): read_tensor(mm, weights.w1[i])
-    for i in range(config.n_layers): read_tensor(mm, weights.w2[i])
-    for i in range(config.n_layers): read_tensor(mm, weights.w3[i])
-    read_tensor(mm, weights.rms_final_weight)
-    read_tensor(mm, weights.freq_cis_real)
-    read_tensor(mm, weights.freq_cis_imag)
-    if shared_weights:
-        weights.wcls = weights.token_embedding_table
+    read_tensor("token_embedding_table", mm, weights.token_embedding_table)
+    for i in range(config.n_layers): read_tensor(f'{weights.rms_att_weight[i]}', mm, weights.rms_att_weight[i])
+    for i in range(config.n_layers): read_tensor(f'{weights.wq[i]}', mm, weights.wq[i])
+    for i in range(config.n_layers): read_tensor(f'{weights.wk[i]}', mm, weights.wk[i])
+    for i in range(config.n_layers): read_tensor(f'{weights.wv[i]}', mm, weights.wv[i])
+    for i in range(config.n_layers): read_tensor(f'{weights.wo[i]}', mm, weights.wo[i])
+    for i in range(config.n_layers): read_tensor(f'{weights.rms_ffn_weight[i]}', mm, weights.rms_ffn_weight[i])
+    for i in range(config.n_layers): read_tensor(f'{weights.w1[i]}', mm, weights.w1[i])
+    for i in range(config.n_layers): read_tensor(f'{weights.w2[i]}', mm, weights.w2[i])
+    for i in range(config.n_layers): read_tensor(f'{weights.w3[i]}', mm, weights.w3[i])
+    read_tensor('rms_final_weight', mm, weights.rms_final_weight)
+    read_tensor('freq_cis_real', mm, weights.freq_cis_real)
+    read_tensor('freq_cis_imag', mm, weights.freq_cis_imag)
+    if not shared_weights:
+        read_tensor('wcls', mm, weights.wcls)
 
     # print('FINISHED READING TransformerWeights')
     mm.close()
