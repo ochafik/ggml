@@ -5,7 +5,7 @@
   
   Usage:
 
-    - `python generate.py --mode=dynamic_load --all_headers` to generate a Python module that can be versioned and supports all the headers
+    - `python generate.py --mode=dynamic_load` to generate a Python module that can be versioned and supports all the headers
     - `python generate.py --mode=static_link --metal` on mac
     
 """
@@ -18,6 +18,7 @@ from sys import argv
 from pathlib import Path
 from stubs_generator import generate_stubs
 import platform
+import tempfile
 from typing import Literal, Optional
 from jsonargparse import CLI
 
@@ -46,7 +47,10 @@ def eval_size_expr(expr: str, header_files: list[Path], *args: list[str]) -> str
         return expr
 
 def preprocess(src: str, *args: list[str]):
-    return subprocess.run([c_compiler, "-E", *args, "-"], input=src, capture_output=True, text=True, check=True).stdout
+    try:
+        return subprocess.run([c_compiler, "-E", *args, "-"], input=src, capture_output=True, text=True, check=True).stdout
+    except subprocess.CalledProcessError as e:
+        raise Exception(f"Failed to preprocess: {e.stderr}")
 
 def __read_text(p: Path):
    with p.open("rt") as f:
@@ -59,14 +63,16 @@ def __write_text(p: Path, s: str):
 def prettify_header(header_files: list[Path], defines: list[str]) -> str:
     header = '\n'.join([__read_text(f) for f in header_files])
 
-    # Run preprocessor w/o any #includes (assume self-contained header, avoids noise from system defines)
-    # Also, remove exotic annotations / calls that pycparser / cffi don't like.
-    header = "\n".join([l for l in header.splitlines() if not re.match(r'^\s*#\s*include', l)])
+    # Remove exotic annotations / calls that pycparser / cffi don't like.
     header = preprocess(header, *defines + [
         '-Ddeprecated(x)=',
         '-D__attribute__(x)=',
         '-Dstatic_assert(x, m)=',
     ])
+
+    lines = header.splitlines()
+    lines = [l for l in lines if not re.search(r'__darwin_va_list', l)]
+    header = '\n'.join(lines)
     
     # pycparser (which powers cffi) doesn't like constant size expressions, so we
     # replace them with their values as part of our preprocessing.
@@ -105,7 +111,6 @@ def generate(
         library: str = 'llama',
         ggml_package: str = 'ggml',
         build_dir: Path = None,
-        all_headers: Optional[bool] = None,
         use_llama_cpp: bool = True,
         k_quants: Optional[bool] = None,
         accelerate: bool = platform.system() == 'Darwin',
@@ -115,14 +120,9 @@ def generate(
         opencl: bool = False,
         alloc: bool = True):
     
+    CPPFLAGS = get_list_flag('CPPFLAGS')
     CFLAGS = get_list_flag('CFLAGS')
     LDFLAGS = get_list_flag('LDFLAGS')
-
-    if all_headers is not None:
-        metal = True
-        cuda = True
-        opencl = True
-        alloc = True
 
     if use_llama_cpp:
         if not llama_dir.is_dir():
@@ -159,13 +159,24 @@ def generate(
     if accelerate:
         CFLAGS += ['-DGGML_USE_ACCELERATE']
     
-    header_files = [find_file_by_name([f'{n}.h'], include_dir) for n in units]
+    header_names = [
+        'ggml.h',
+        'ggml-alloc.h',
+        'ggml-cuda.h',
+        'ggml-opencl.h',
+        'ggml-metal.h',
+    ]
+    header_files = [h for h in [include_dir / n for n in header_names] if h.exists()]
     
-    preprocessed_header = prettify_header(header_files, defines=[])
+    CPPFLAGS += ["-I", include_dir.as_posix()]
+    CPPFLAGS += ['-D__fp16=uint16_t']  # pycparser doesn't support __fp16
 
-    # pycparser doesn't support __fp16, so replace it with uint16_t
-    preprocessed_header = 'typedef uint16_t __fp16;\n' + preprocessed_header
-    CFLAGS += ['-D__fp16=uint16_t']
+    SOURCE = "\n".join([f'#include "{h.absolute().as_posix()}"' for h in header_files])
+    
+    with tempfile.TemporaryDirectory() as td:
+        header = Path(td) / 'input.h'
+        __write_text(header, SOURCE)
+        preprocessed_header = prettify_header([header], defines=CPPFLAGS)
 
     # Generate stubs for the Python side. We don't use the preprocessed headers here
     # as they already lost some information (e.g. GGML_API).
@@ -179,22 +190,20 @@ def generate(
         f'import {ggml_package}.ffi as ffi',
         '',
         '# ggml library (cffi bindings)',
-        generate_stubs('\n'.join([__read_text(f) for f in header_files])),
+        generate_stubs(preprocessed_header),
     ]))
 
     ffibuilder = cffi.FFI()
-    ffibuilder.cdef(preprocessed_header)
+    ffibuilder.cdef(preprocessed_header, override=True)
 
-    SOURCE = "\n".join([f'#include "{h.name}"' for h in header_files])
     source_files = []
-    header_files = []
 
-    LDFLAGS += ["-lm"]
     CFLAGS += ["-I", include_dir.as_posix()]
     if debug:
         CFLAGS += ['-g', '-O0']
     else:
         CFLAGS += ['-Ofast', '-DNDEBUG']
+    LDFLAGS += ["-lm"]
 
     if mode == 'dynamic_load':
         # We'll only generate ggml/cffi.py and ffi.dlopen magic will happen at / import time.
@@ -237,6 +246,7 @@ def generate(
     print(f"""
         Building ggml in mode={mode}
         
+        CPPFLAGS={CPPFLAGS}
         CFLAGS={CFLAGS}
         LDFLAGS={LDFLAGS}
         source_files={source_files}
@@ -248,11 +258,13 @@ def generate(
         f'{ggml_package}.cffi',
         SOURCE,
         extra_link_args=LDFLAGS,
-        extra_compile_args=CFLAGS)
+        extra_compile_args=CPPFLAGS + CFLAGS)
     try:
         ffibuilder.compile(verbose=True)
     except:
-        #   print(preprocessed_header)
+        out_file = Path('preprocessed.h')
+        __write_text(out_file, preprocessed_header)
+        print('Wrote preprocessed header to', out_file)
         raise
 
     bindings_file = Path(ggml_package) / 'cffi.py'
