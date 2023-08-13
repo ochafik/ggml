@@ -1,7 +1,12 @@
 # Ported from llama2.c
 # https://github.com/ochafik/llama2.c/blob/master/run.c
 
-# import os; os.environ['GGML_LIBRARY'] = '/tmp/llama_build_for_ggml_python_example/libggml_shared.dylib'
+# cmake ../../../llama.cpp -B /tmp/llama_release -DLLAMA_METAL=1 -DBUILD_SHARED_LIBS=1 -DCMAKE_BUILD_TYPE=Release && ( cd /tmp/llama_release && make -j )
+# import os; os.environ['GGML_LIBRARY'] = '/tmp/llama_release/libggml_shared.dylib'
+
+# cmake ../../../llama.cpp -B /tmp/llama_debug -DLLAMA_METAL=1 -DBUILD_SHARED_LIBS=1 -DCMAKE_BUILD_TYPE=Debug && ( cd /tmp/llama_debug && make -j )
+import os; os.environ['GGML_LIBRARY'] = '/tmp/llama_debug/libggml_shared.dylib'
+
 
 from ggml import lib, ffi
 from ggml.utils import init, numpy, copy
@@ -10,7 +15,7 @@ from dataclasses import dataclass
 from typing import List, Tuple, Optional, Union, Dict, Any, Callable, TypeVar, Generic
 from jsonargparse import CLI
 from pathlib import Path
-import struct, os, mmap, math
+import struct, os, mmap, math, sys
 import itertools
 
 Tensor = ffi.CData
@@ -148,40 +153,40 @@ rms_norm_eps = 1e-5
 rope_freq_base  = 10000.0
 rope_freq_scale = 1.0
 
-# def transformer(ctx, token: ScalarTensor, pos: int, p: Config, s: RunState, w: TransformerWeights):
+def build_transformer_graph(ctx, token: ScalarTensor, pos: int, p: Config, s: RunState, w: TransformerWeights):
 
-#     # a few convenience variables
-#     dim = p.dim
-#     hidden_dim =  p.hidden_dim
-#     head_size = dim // p.n_heads
+    # a few convenience variables
+    dim = p.dim
+    hidden_dim =  p.hidden_dim
+    head_size = dim // p.n_heads
 
-#     # copy the token embedding into x
-#     x = lib.ggml_get_rows(ctx, w.token_embedding_table, token)
+    # copy the token embedding into x
+    x = lib.ggml_get_rows(ctx, w.token_embedding_table, token)
 
 
-#     # # pluck out the "pos" row of freq_cis_real and freq_cis_imag
-#     # freq_cis_real_row = w.freq_cis_real + pos * head_size / 2
-#     # freq_cis_imag_row = w.freq_cis_imag + pos * head_size / 2
+    # # pluck out the "pos" row of freq_cis_real and freq_cis_imag
+    # freq_cis_real_row = w.freq_cis_real + pos * head_size / 2
+    # freq_cis_imag_row = w.freq_cis_imag + pos * head_size / 2
 
-#     # forward all the layers
-#     for l in range(p.n_layers):
+    # forward all the layers
+    for l in range(p.n_layers):
 
-#         # attention rmsnorm
-#         x = lib.ggml_rms_norm(ctx, x, rms_norm_eps)
-#         x = lib.ggml_mul(ctx, x, w.rms_att_weight[l])
+        # attention rmsnorm
+        x = lib.ggml_rms_norm(ctx, x, rms_norm_eps)
+        x = lib.ggml_mul(ctx, x, w.rms_att_weight[l])
         
-#         # qkv matmuls for this position
-#         tmpk = lib.ggml_mul_mat(ctx, w.wk[l], x)
-#         tmpq = lib.ggml_mul_mat(ctx, w.wq[l], x)
-#         Kcur = lib.ggml_rope_custom_inplace(ctx, lib.ggml_reshape_3d(ctx, tmpk, n_embd_head, n_head_kv, N), n_past, n_embd_head, 0, 0, rope_freq_base, rope_freq_scale)
-#         Qcur = lib.ggml_rope_custom_inplace(ctx, lib.ggml_reshape_3d(ctx, tmpq, n_embd_head, n_head, N),    n_past, n_embd_head, 0, 0, rope_freq_base, rope_freq_scale)
+        # qkv matmuls for this position
+        tmpk = lib.ggml_mul_mat(ctx, w.wk[l], x)
+        tmpq = lib.ggml_mul_mat(ctx, w.wq[l], x)
+        Kcur = lib.ggml_rope_custom_inplace(ctx, lib.ggml_reshape_3d(ctx, tmpk, n_embd_head, n_head_kv, N), n_past, n_embd_head, 0, 0, rope_freq_base, rope_freq_scale)
+        Qcur = lib.ggml_rope_custom_inplace(ctx, lib.ggml_reshape_3d(ctx, tmpq, n_embd_head, n_head, N),    n_past, n_embd_head, 0, 0, rope_freq_base, rope_freq_scale)
 
 
-#         tmpv = lib.ggml_mul_mat(ctx, w.wv[l], x)
+        tmpv = lib.ggml_mul_mat(ctx, w.wv[l], x)
                 
-#         Vcur = lib.ggml_transpose(ctx, lib.ggml_reshape_2d(ctx, tmpv, n_embd_gqa, N))
+        Vcur = lib.ggml_transpose(ctx, lib.ggml_reshape_2d(ctx, tmpv, n_embd_gqa, N))
                 
-#         k = lib.ggml_view_1d(ctx, s.key_cache, N*n_embd_gqa, (lib.ggml_element_size(kv_self.k)*n_embd_gqa)*(il*n_ctx + n_past))
+        k = lib.ggml_view_1d(ctx, s.key_cache, N*n_embd_gqa, (lib.ggml_element_size(kv_self.k)*n_embd_gqa)*(il*n_ctx + n_past))
 
 #         v = lib.ggml_view_2d(ctx, s.value_cache, N, n_embd_gqa,
 #                         (   n_ctx)*lib.ggml_element_size(s.value_cache),
@@ -406,39 +411,48 @@ def read_tensor(f, tensor):
     nbytes = np.prod(shape) * ffi.sizeof('float')
     copy(np.frombuffer(f.read(nbytes), dtype=np.float32).reshape(shape), tensor)
 
-def run(model: Path, tokenizer_model: Path, prompt: Optional[str] = None):
+def run(
+        model: Path,
+        tokenizer_model: Path,
+        prompt: Optional[str] = None,
+        steps: int = 256,
+        temperature: float = 1.0,
+        seed: Optional[int] = None,
+        n_threads: int = 1,
+        topp: float = 0.9): # top-p in nucleus sampling
+
     fd = os.open(model.as_posix(), os.O_RDONLY)
     mm = mmap.mmap(fd, 0, prot=mmap.PROT_READ)
     
     def read_format(f, fmt): return struct.unpack_from(fmt, f.read(struct.calcsize(fmt)))
 
-    p = Config(*read_format(mm, '<iiiiiii'))
-    shared_weights = p.vocab_size > 0
-    p.vocab_size = int(math.fabs(p.vocab_size))
+    config = Config(*read_format(mm, '<iiiiiii'))
+    shared_weights = config.vocab_size > 0
+    config.vocab_size = int(math.fabs(config.vocab_size))
 
-    print(p)
+    print(config)
 
     ctx = init(mem_size=1024*1024*1024)
 
     # type = lib.GGML_TYPE_Q5_K
     tensor_type = lib.GGML_TYPE_F32
 
-    w = TransformerWeights(p, ctx, tensor_type, shared_weights)
-    read_tensor(mm, w.token_embedding_table)
-    for i in range(p.n_layers): read_tensor(mm, w.rms_att_weight[i])
-    for i in range(p.n_layers): read_tensor(mm, w.wq[i])
-    for i in range(p.n_layers): read_tensor(mm, w.wk[i])
-    for i in range(p.n_layers): read_tensor(mm, w.wv[i])
-    for i in range(p.n_layers): read_tensor(mm, w.wo[i])
-    for i in range(p.n_layers): read_tensor(mm, w.rms_ffn_weight[i])
-    for i in range(p.n_layers): read_tensor(mm, w.w1[i])
-    for i in range(p.n_layers): read_tensor(mm, w.w2[i])
-    for i in range(p.n_layers): read_tensor(mm, w.w3[i])
-    read_tensor(mm, w.rms_final_weight)
-    read_tensor(mm, w.freq_cis_real)
-    read_tensor(mm, w.freq_cis_imag)
+    weights = TransformerWeights(config, ctx, tensor_type, shared_weights)
+    read_tensor(mm, weights.token_embedding_table)
+    for i in range(config.n_layers): read_tensor(mm, weights.rms_att_weight[i])
+    for i in range(config.n_layers): read_tensor(mm, weights.wq[i])
+    for i in range(config.n_layers): read_tensor(mm, weights.wk[i])
+    for i in range(config.n_layers): read_tensor(mm, weights.wv[i])
+    for i in range(config.n_layers): read_tensor(mm, weights.wo[i])
+    for i in range(config.n_layers): read_tensor(mm, weights.rms_ffn_weight[i])
+    for i in range(config.n_layers): read_tensor(mm, weights.w1[i])
+    for i in range(config.n_layers): read_tensor(mm, weights.w2[i])
+    for i in range(config.n_layers): read_tensor(mm, weights.w3[i])
+    read_tensor(mm, weights.rms_final_weight)
+    read_tensor(mm, weights.freq_cis_real)
+    read_tensor(mm, weights.freq_cis_imag)
     if shared_weights:
-        w.wcls = w.token_embedding_table
+        weights.wcls = weights.token_embedding_table
 
     # print('FINISHED READING TransformerWeights')
     mm.close()
@@ -448,27 +462,82 @@ def run(model: Path, tokenizer_model: Path, prompt: Optional[str] = None):
         max_token_length = read_format(fd, '<i')[0]
         vocab = []
         vocab_scores = []
-        for i in range(p.vocab_size):
+        for i in range(config.vocab_size):
             vocab_scores.append(read_format(fd, '<f')[0])
             vocab.append(fd.read(read_format(fd, '<i')[0]).decode('utf-8'))
 
         sorted_vocab = [TokenIndex(str, i) for i, str in enumerate(vocab)]
         sorted_vocab.sort(key=lambda x: x.str)
 
-        v = Vocabulary(p.vocab_size, vocab, vocab_scores, max_token_length, sorted_vocab)
+        v = Vocabulary(config.vocab_size, vocab, vocab_scores, max_token_length, sorted_vocab)
         # print('FINISHED READING Vocabulary')
 
-    state = RunState(p, ctx, tensor_type)
+    state = RunState(config, ctx, tensor_type)
     # print('FINISHED BUILDING RunState')
 
     # process the prompt, if any
     prompt_tokens = None
-    num_prompt_tokens = 0;
     if prompt is not None:
-        prompt_tokens = bpe_encode(prompt, v);
+        prompt_tokens = bpe_encode(prompt, v)
+        steps += len(prompt_tokens)
 
     print('FINISHED PROCESSING PROMPT')
     print(prompt_tokens)
+
+    # start the main loop
+    start = 0  # used to time our code, only initialized after first iteration
+    next = None        # will store the next token in the sequence
+    token = lib.ggml_new_i32(ctx, 1)   # init with token 1 (=BOS), as done in Llama-2 sentencepiece tokenizer
+    pos = 0     # position in the sequence
+
+    gf = build_transformer_graph(ctx, token, pos, config, state, weights)
+    lib.ggml_build_forward_expand(gf, state.logits)
+
+    while (pos < steps):
+        # forward the transformer to get logits for the next token
+        # TODO: actually while we're processing the prompt tokens, we can just
+        # build forward expand on the last layer's kv cache write and save some
+        # operations. But that would mean creating
+        # a different graph so might be counteproductive.
+        lib.ggml_graph_compute_with_ctx(ctx, gf, n_threads)
+
+        # advance the state state machine
+        if(pos < len(prompt_tokens)):
+            # if we are still processing the input prompt, force the next prompt token
+            next = prompt_tokens[pos]
+        else:
+            # sample the next token
+            if (temperature == 0.0):
+                # greedy argmax sampling: take the token with the highest probability
+                next = argmax(state.logits, config.vocab_size)
+            else:
+                # apply the temperature to the logits
+                for q in range(config.vocab_size): state.logits[q] /= temperature
+                # apply softmax to the logits to get the probabilities for next token
+                softmax(state.logits, config.vocab_size)
+                # we sample from this distribution to get the next token
+                if (topp <= 0):
+                    # simply sample from the predicted probability distribution
+                    next = sample(state.logits, config.vocab_size)
+                else:
+                    # top-p (nucleus) sampling, clamping the least likely tokens to zero
+                    next = sample_topp(state.logits, config.vocab_size, topp, state.probindex)
+
+        pos += 1
+
+        # data-dependent terminating condition: the BOS (1) token delimits sequences
+        if (next == 1): break
+
+        # following BOS (1) token, sentencepiece decoder strips any leading whitespace (see PR #89)
+        token_str = v.vocab[next]+1 if (token == 1 and v.vocab[next][0] == ' ') else v.vocab[next]
+        sys.stdout.write(token_str)
+        sys.stdout.flush()
+        lib.ggml_set_i32(token, next)
+
+        # init the timer here because the first iteration can be slower
+        # if (start == 0): start = time_in_ms(); }
+
+    print("")
 
 if __name__ == '__main__':
     CLI(run)
