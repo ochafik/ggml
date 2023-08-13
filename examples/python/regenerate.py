@@ -29,7 +29,7 @@ for expr in set(re.findall(f'(?<=\\[)[^\\]]+(?=])|sizeof\\s*\\([^()]+\\)', heade
                              #include "{API}"
                              int main() {{ printf("%lu", (size_t)({expr})); }}''')
     size = subprocess.run(["./eval_size_expr"], capture_output=True, text=True, check=True).stdout
-    print(f'constexpr {expr} = {size}')
+    print(f'Computed constexpr {expr} = {size}')
     header = header.replace(expr, size)
 
 ffibuilder = cffi.FFI()
