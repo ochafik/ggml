@@ -2,7 +2,7 @@
   Common helpers for working with ggml and numpy
 """
 from ggml import ffi, lib
-from typing import Union
+from typing import Union, Optional
 import numpy as np
 import sys
 
@@ -119,7 +119,7 @@ __type_to_dtype_dict = {
 }
 
 # TODO: remove
-def type_to_dtype(type: int):
+def type_to_dtype(type: int) -> Optional[np.dtype]:
   return __type_to_dtype_dict.get(type)
 
 def __describe(tensor: ffi.CType) -> str:
