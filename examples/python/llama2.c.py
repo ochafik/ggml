@@ -169,9 +169,9 @@ def build_transformer_graph(ctx, token: ScalarTensor, pos: int, p: Config, s: Ru
     info(w.token_embedding_table, "token_embedding_table")
     info(token, "token")
     # x = lib.ggml_get_rows(ctx, w.token_embedding_table, token)
-    x = lib.ggml_get_rows(ctx, w.token_embedding_table, token)
-    info(x, "x")
-    assert(numpy(x).shape == (dim, 1))
+    s.x = lib.ggml_get_rows(ctx, w.token_embedding_table, token)
+    info(s.x, "x")
+    assert(numpy(s.x).shape == (dim, 1))
 
 
     # # pluck out the "pos" row of freq_cis_real and freq_cis_imag
@@ -180,6 +180,16 @@ def build_transformer_graph(ctx, token: ScalarTensor, pos: int, p: Config, s: Ru
 
     # forward all the layers
 
+    n_gqa = p.n_heads // p.n_kv_heads
+    assert p.n_heads % p.n_kv_heads == 0
+    n_embd_gqa = p.dim // n_gqa
+    assert p.dim % n_gqa == 0
+
+    KQ_scale = lib.ggml_new_f32(ctx, 1.0/math.sqrt(float(p.dim)/p.n_heads))
+    
+
+    gf = lib.ggml_new_graph(ctx)
+
     for l in range(p.n_layers):
         # in llama.cpp:
         #   inpSA = inpL,
@@ -187,194 +197,122 @@ def build_transformer_graph(ctx, token: ScalarTensor, pos: int, p: Config, s: Ru
         #   then cur gets projected onto K, Q
         #   ...
 
-        # llama2.c -> llama.cpp
-        #   x -> inpL
+        # llama.cpp  vs llama2.c
+        #          inpL <-> x
+        #        n_past <-> pos
+        #  N = n_tokens <-> p.seq_len??
+        #    n_embd_gqa <-> ??
+        #        n_embd <-> p.dim ?? (in other places like kv_cache_init it's n_embd_gqa. CAREFUL)
+        #         n_ctx <-> 1 (one context only)
+        #        n_head <-> p.n_heads
+
+        # in llama2.c:
         #   xb gets rmsnorm(x), and it gets projected onto q, k, v
         #   
 
         # attention rmsnorm
-        x = lib.ggml_rms_norm(ctx, x, rms_norm_eps)
-        info(x, "x")
+        s.x = lib.ggml_rms_norm(ctx, s.x, rms_norm_eps)
+        info(s.x, "s.x")
         info(w.rms_att_weight[l], "rms_att_weight")
-        x = lib.ggml_mul(ctx, x, w.rms_att_weight[l])
+        s.x = lib.ggml_mul(ctx, s.x, w.rms_att_weight[l])
         
         # qkv matmuls for this position
-        tmpk = lib.ggml_mul_mat(ctx, w.wk[l], x)
-        tmpq = lib.ggml_mul_mat(ctx, w.wq[l], x)
-        Kcur = lib.ggml_rope_custom_inplace(ctx, lib.ggml_reshape_3d(ctx, tmpk, p.n_heads, p.n_kv_heads, N), n_past, p.n_heads, 0, 0, rope_freq_base, rope_freq_scale)
-        Qcur = lib.ggml_rope_custom_inplace(ctx, lib.ggml_reshape_3d(ctx, tmpq, p.n_heads, n_head, N),    n_past, p.n_heads, 0, 0, rope_freq_base, rope_freq_scale)
+        tmpk = lib.ggml_mul_mat(ctx, w.wk[l], s.x)
+        tmpq = lib.ggml_mul_mat(ctx, w.wq[l], s.x)
+        Kcur = lib.ggml_rope_custom_inplace(ctx, lib.ggml_reshape_3d(ctx, tmpk, p.n_heads, p.n_kv_heads, p.seq_len), pos, p.n_heads, 0, 0, rope_freq_base, rope_freq_scale)
+        Qcur = lib.ggml_rope_custom_inplace(ctx, lib.ggml_reshape_3d(ctx, tmpq, p.n_heads, p.n_heads, p.seq_len),    pos, p.n_heads, 0, 0, rope_freq_base, rope_freq_scale)
 
 
-        tmpv = lib.ggml_mul_mat(ctx, w.wv[l], x)
+        tmpv = lib.ggml_mul_mat(ctx, w.wv[l], s.x)
                 
-        Vcur = lib.ggml_transpose(ctx, lib.ggml_reshape_2d(ctx, tmpv, n_embd_gqa, N))
+        Vcur = lib.ggml_transpose(ctx, lib.ggml_reshape_2d(ctx, tmpv, n_embd_gqa, p.seq_len))
                 
-        k = lib.ggml_view_1d(ctx, s.key_cache, N*n_embd_gqa, (lib.ggml_element_size(kv_self.k)*n_embd_gqa)*(il*n_ctx + n_past))
+        k = lib.ggml_view_1d(ctx, s.key_cache, p.seq_len*n_embd_gqa, (lib.ggml_element_size(s.key_cache)*n_embd_gqa)*(l + pos))
 
-#         v = lib.ggml_view_2d(ctx, s.value_cache, N, n_embd_gqa,
-#                         (   n_ctx)*lib.ggml_element_size(s.value_cache),
-#                          (l*n_ctx)*lib.ggml_element_size(s.value_cache)*n_embd_gqa + n_past*lib.ggml_element_size(s.value_cache))
+        v = lib.ggml_view_2d(ctx, s.value_cache, p.seq_len, n_embd_gqa,
+                                lib.ggml_element_size(s.value_cache),
+                              l*lib.ggml_element_size(s.value_cache)*n_embd_gqa + pos*lib.ggml_element_size(s.value_cache))
                 
-#         # important: storing RoPE-ed version of K in the KV cache!
-#         lib.ggml_build_forward_expand(gf, lib.ggml_cpy(ctx, Kcur, k))
-#         lib.ggml_build_forward_expand(gf, lib.ggml_cpy(ctx, Vcur, v))
+        # important: storing RoPE-ed version of K in the KV cache!
+        lib.ggml_build_forward_expand(gf, lib.ggml_cpy(ctx, Kcur, k))
+        lib.ggml_build_forward_expand(gf, lib.ggml_cpy(ctx, Vcur, v))
+        
+        Q = lib.ggml_permute(ctx, Qcur, 0, 2, 1, 3)
+        
+        K = lib.ggml_permute(ctx,
+                    lib.ggml_reshape_3d(ctx,
+                        lib.ggml_view_1d(ctx, s.key_cache, (pos + p.seq_len)*n_embd_gqa, l*lib.ggml_element_size(s.key_cache)*n_embd_gqa),
+                        p.n_heads, p.n_kv_heads, pos + p.seq_len),
+                    0, 2, 1, 3)
+        
+        # K * Q
+        KQ = lib.ggml_mul_mat(ctx, K, Q)
+        
+        # KQ_scaled = KQ / sqrt(p.n_heads)
+        # KQ_scaled shape [pos + N, N, n_head, 1]
+        KQ_scaled = lib.ggml_scale_inplace(ctx, KQ, KQ_scale)
+        
+        # KQ_masked = mask_past(KQ_scaled)
+        KQ_masked = lib.ggml_diag_mask_inf_inplace(ctx, KQ_scaled, pos)
+        
+        # KQ = soft_max(KQ_masked)
+        KQ_soft_max = lib.ggml_soft_max_inplace(ctx, KQ_masked)
+
+        # split cached V into n_head heads
+        V = lib.ggml_view_3d(ctx, s.value_cache,
+                    pos + p.seq_len, p.n_heads, p.n_kv_heads,
+                    lib.ggml_element_size(s.value_cache),
+                    lib.ggml_element_size(s.value_cache)*p.n_heads,
+                    lib.ggml_element_size(s.value_cache)*n_embd_gqa*l)
         
 
-#         Q = lib.ggml_permute(ctx,
-#                     Qcur,
-#                     0, 2, 1, 3)
+        KQV = lib.ggml_mul_mat(ctx, V, KQ_soft_max)
         
-#         K = lib.ggml_permute(ctx,
-#                     lib.ggml_reshape_3d(ctx,
-#                         lib.ggml_view_1d(ctx, kv_self.k, (n_past + N)*n_embd_gqa, il*n_ctx*lib.ggml_element_size(kv_self.k)*n_embd_gqa),
-#                         p.n_heads, p.n_kv_heads, n_past + N),
-#                     0, 2, 1, 3)
+        # KQV_merged = KQV.permute(0, 2, 1, 3)
+        KQV_merged = lib.ggml_permute(ctx, KQV, 0, 2, 1, 3)
+
+        # x = KQV_merged.contiguous().view(n_embd, N)
+        s.xb = lib.ggml_cpy(ctx, KQV_merged, lib.ggml_new_tensor_2d(ctx, lib.GGML_TYPE_F32, p.dim, p.seq_len))
+
+        # projection (no bias)
+        # final matmul to get the output of the attention
+        s.xb2 = lib.ggml_mul_mat(ctx, s.xb, w.wo[l])
+
+        # residual connection back into x
+        s.x = lib.ggml_add(ctx, s.x, s.xb2)
+
+        # ffn rmsnorm
+        s.xb = lib.ggml_rms_norm(ctx, s.x, rms_norm_eps)
+        s.xb = lib.ggml_mul(ctx, s.xb, w.rms_ffn_weight[l]) # xb = xb*ffn_norm(broadcasted)
         
-#         # K * Q
-#         KQ = lib.ggml_mul_mat(ctx, K, Q)
+        # Now for FFN in PyTorch we have: self.w2(F.silu(self.w1(x)) * self.w3(x))
+        # first calculate self.w1(x) and self.w3(x)
+        s.hb = lib.ggml_mul_mat(ctx, s.xb, w.w1[l])
+        s.hb2 = lib.ggml_mul_mat(ctx, s.xb, w.w3[l])
+
         
-#         # KQ_scaled = KQ / sqrt(p.n_heads)
-#         # KQ_scaled shape [n_past + N, N, n_head, 1]
-#         KQ_scaled = lib.ggml_scale_inplace(ctx, KQ, KQ_scale)
+        # SILU activation
+        s.hb = lib.ggml_silu(ctx, s.hb)
+
+        # elementwise multiply with w3(x)
+        s.hb = lib.ggml_mul(ctx, s.hb, s.hb2)
         
-#         # KQ_masked = mask_past(KQ_scaled)
-#         KQ_masked = lib.ggml_diag_mask_inf_inplace(ctx, KQ_scaled, n_past)
         
-#         # KQ = soft_max(KQ_masked)
-#         KQ_soft_max = lib.ggml_soft_max_inplace(ctx, KQ_masked)
+        # final matmul to get the output of the ffn
+        s.xb = lib.ggml_mul_mat(ctx, s.hb, w.w2[l]) # inverse?
 
-#         # split cached V into n_head heads
-#         V = lib.ggml_view_3d(ctx, kv_self.v,
-#                     n_past + N, p.n_heads, p.n_kv_heads,
-#                     n_ctx*lib.ggml_element_size(kv_self.v),
-#                     n_ctx*lib.ggml_element_size(kv_self.v)*p.n_heads,
-#                     n_ctx*lib.ggml_element_size(kv_self.v)*n_embd_gqa*il)
+        # residual connection
+        s.x = lib.ggml_add(ctx, s.x, s.xb)
         
+    # final rmsnorm
+    s.x = lib.ggml_rms_norm(ctx, s.x, rms_norm_eps)
+    s.x = lib.ggml_mul(ctx, s.x, w.rms_final_weight) # x = x*norm(broadcasted)
 
-#         KQV = lib.ggml_mul_mat(ctx, V, KQ_soft_max)
-        
-#         # KQV_merged = KQV.permute(0, 2, 1, 3)
-#         KQV_merged = lib.ggml_permute(ctx, KQV, 0, 2, 1, 3)
+    # classifier into logits
+    s.x = lib.ggml_mul_mat(ctx, w.wcls, s.x)
 
-#         # x = KQV_merged.contiguous().view(n_embd, N)
-#         x = lib.ggml_cpy(ctx,
-#                 KQV_merged,
-#                 lib.ggml_new_tensor_2d(ctx, GGML_TYPE_F32, n_embd, N))
+    lib.ggml_build_forward_expand(gf, s.x)
 
-#         # projection (no bias)
-#         # final matmul to get the output of the attention
-#         s.xb2 = lib.ggml_mul_mat(ctx, s.xb, w.wo[l])
-
-#         # residual connection back into x
-#         accum(x, s.xb2, dim)
-
-#         struct ggml_tensor * inpFF = ggml_add(ctx0, cur, inpSA);
-#         offload_func(inpFF);
-#         ggml_set_name(inpFF, "inpFF");
-
-#         // feed-forward network
-#         {
-#             // norm
-#             {
-#                 cur = ggml_rms_norm(ctx0, inpFF, rms_norm_eps);
-#                 offload_func(cur);
-#                 ggml_set_name(cur, "rms_norm_1");
-
-#                 // cur = cur*ffn_norm(broadcasted)
-#                 cur = ggml_mul(ctx0, cur, model.layers[il].ffn_norm);
-#                 offload_func(cur);
-#                 ggml_set_name(cur, "ffn_norm");
-#             }
-
-#             struct ggml_tensor * tmp = ggml_mul_mat(ctx0,
-#                     model.layers[il].w3,
-#                     cur);
-#             offload_func(tmp);
-#             ggml_set_name(tmp, "result_w3");
-
-#             cur = ggml_mul_mat(ctx0,
-#                     model.layers[il].w1,
-#                     cur);
-#             offload_func(cur);
-#             ggml_set_name(cur, "result_w1");
-
-#             // SILU activation
-#             cur = ggml_silu(ctx0, cur);
-#             offload_func(cur);
-#             ggml_set_name(cur, "silu");
-
-#             cur = ggml_mul(ctx0, cur, tmp);
-#             offload_func(cur);
-#             ggml_set_name(cur, "silu_x_result_w3");
-
-#             cur = ggml_mul_mat(ctx0,
-#                     model.layers[il].w2,
-#                     cur);
-#             offload_func(cur);
-#             ggml_set_name(cur, "result_w2");
-#         }
-
-#         cur = ggml_add(ctx0, cur, inpFF);
-#         offload_func(cur);
-#         ggml_set_name(cur, "inpFF_+_result_w2");
-
-#         // input for next layer
-#         inpL = cur;
-#     }
-
-#     lctx.use_buf(ctx0, 0);
-
-#     // norm
-#     {
-#         cur = ggml_rms_norm(ctx0, inpL, rms_norm_eps);
-#         offload_func_nr(cur);
-#         ggml_set_name(cur, "rms_norm_2");
-
-#         // cur = cur*norm(broadcasted)
-#         cur = ggml_mul(ctx0, cur, model.norm);
-#         // offload_func_nr(cur); // TODO CPU + GPU mirrored backend
-#         ggml_set_name(cur, "result_norm");
-#     }
-
-#     // lm_head
-#     cur = ggml_mul_mat(ctx0, model.output, cur);
-#     ggml_set_name(cur, "result_output");
-
-#     lctx.use_buf(ctx0, -1);
-
-#     // logits -> probs
-#     //cur = ggml_soft_max_inplace(ctx0, cur);
-
-#     ggml_build_forward_expand(gf, cur);
-
-
-#         # ffn rmsnorm
-#         rmsnorm(s.xb, x, w.rms_ffn_weight + l*dim, dim)
-
-#         # Now for FFN in PyTorch we have: self.w2(F.silu(self.w1(x)) * self.w3(x))
-#         # first calculate self.w1(x) and self.w3(x)
-#         matmul(s.hb, s.xb, w.w1 + l*dim*hidden_dim, dim, hidden_dim)
-#         matmul(s.hb2, s.xb, w.w3 + l*dim*hidden_dim, dim, hidden_dim)
-
-#         # F.silu silu(x)=x*σ(x),where σ(x) is the logistic sigmoid
-#         for i in range(hidden_dim):
-#             s.hb[i] = s.hb[i] * (1.0f / (1.0f + expf(-s.hb[i])))
-
-#         # elementwise multiply with w3(x)
-#         for i in range(hidden_dim):
-#             s.hb[i] = s.hb[i] * s.hb2[i]
-
-#         # final matmul to get the output of the ffn
-#         matmul(s.xb, s.hb, w.w2 + l*dim*hidden_dim, hidden_dim, dim)
-
-#         # residual connection
-#         accum(x, s.xb, dim)
-
-#     # final rmsnorm
-#     rmsnorm(x, x, w.rms_final_weight, dim)
-
-#     # classifier into logits
-#     matmul(s.logits, x, w.wcls, p.dim, p.vocab_size)
 
 def lookup_token(str: str, v: Vocabulary):
     left, right = 0, v.vocab_size - 1
