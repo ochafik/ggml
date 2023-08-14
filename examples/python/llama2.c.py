@@ -53,6 +53,8 @@ class Config:
 
 @dataclass
 class TransformerWeights:
+    shared_weights: bool # whether we share weights between token embedding and classifier
+
     # token embedding table
     token_embedding_table: Tensor    # (vocab_size, dim)
     # weights for rmsnorms
@@ -76,6 +78,7 @@ class TransformerWeights:
     wcls: Tensor
 
     def __init__(self, p: Config, ctx: Context, type: int, shared_weights: bool):
+        self.shared_weights = shared_weights
         self.token_embedding_table = _new_tensor(ctx, (p.dim, p.vocab_size), type)
         self.rms_att_weight = [_new_tensor(ctx, (p.dim,), type) for _ in range(p.n_layers)]
         self.rms_ffn_weight = [_new_tensor(ctx, (p.dim,), type) for _ in range(p.n_layers)]
@@ -372,6 +375,40 @@ def read_tensor(name: str, f, tensor: ffi.CData):
     nbytes = np.prod(shape) * ffi.sizeof('float')
     copy(np.frombuffer(f.read(nbytes), dtype=np.float32).reshape(shape), tensor)
 
+def checkpoint_init_weights(mm, p: Config, w: TransformerWeights):
+    read_tensor("token_embedding_table", mm, w.token_embedding_table)
+    for i in range(p.n_layers): read_tensor(f'{w.rms_att_weight[i]}', mm, w.rms_att_weight[i])
+    for i in range(p.n_layers): read_tensor(f'{w.wq[i]}', mm, w.wq[i])
+    for i in range(p.n_layers): read_tensor(f'{w.wk[i]}', mm, w.wk[i])
+    for i in range(p.n_layers): read_tensor(f'{w.wv[i]}', mm, w.wv[i])
+    for i in range(p.n_layers): read_tensor(f'{w.wo[i]}', mm, w.wo[i])
+    for i in range(p.n_layers): read_tensor(f'{w.rms_ffn_weight[i]}', mm, w.rms_ffn_weight[i])
+    for i in range(p.n_layers): read_tensor(f'{w.w1[i]}', mm, w.w1[i])
+    for i in range(p.n_layers): read_tensor(f'{w.w2[i]}', mm, w.w2[i])
+    for i in range(p.n_layers): read_tensor(f'{w.w3[i]}', mm, w.w3[i])
+    read_tensor('rms_final_weight', mm, w.rms_final_weight)
+    read_tensor('freq_cis_real', mm, w.freq_cis_real)
+    read_tensor('freq_cis_imag', mm, w.freq_cis_imag)
+    if not w.shared_weights:
+        read_tensor('wcls', mm, w.wcls)
+
+def read_format(f, fmt): return struct.unpack_from(fmt, f.read(struct.calcsize(fmt)))
+
+def read_vocab(tokenizer_model: Path, config: Config) -> Vocabulary:
+    with tokenizer_model.open('rb') as fd:
+        max_token_length = read_format(fd, '<i')[0]
+        vocab = []
+        vocab_scores = []
+        for i in range(config.vocab_size):
+            vocab_scores.append(read_format(fd, '<f')[0])
+            vocab.append(fd.read(read_format(fd, '<i')[0]).decode('utf-8'))
+
+        sorted_vocab = [TokenIndex(str, i) for i, str in enumerate(vocab)]
+        sorted_vocab.sort(key=lambda x: x.str)
+
+        return Vocabulary(config.vocab_size, vocab, vocab_scores, max_token_length, sorted_vocab)
+        # print('FINISHED READING Vocabulary')
+
 def run(
         model: Path,
         tokenizer_model: Path,
@@ -384,8 +421,6 @@ def run(
 
     fd = os.open(model.as_posix(), os.O_RDONLY)
     mm = mmap.mmap(fd, 0, prot=mmap.PROT_READ)
-    
-    def read_format(f, fmt): return struct.unpack_from(fmt, f.read(struct.calcsize(fmt)))
 
     config = Config(*read_format(mm, '<iiiiiii'))
     shared_weights = config.vocab_size > 0
@@ -399,51 +434,21 @@ def run(
     tensor_type = lib.GGML_TYPE_F32
 
     weights = TransformerWeights(config, ctx, tensor_type, shared_weights)
-    read_tensor("token_embedding_table", mm, weights.token_embedding_table)
-    for i in range(config.n_layers): read_tensor(f'{weights.rms_att_weight[i]}', mm, weights.rms_att_weight[i])
-    for i in range(config.n_layers): read_tensor(f'{weights.wq[i]}', mm, weights.wq[i])
-    for i in range(config.n_layers): read_tensor(f'{weights.wk[i]}', mm, weights.wk[i])
-    for i in range(config.n_layers): read_tensor(f'{weights.wv[i]}', mm, weights.wv[i])
-    for i in range(config.n_layers): read_tensor(f'{weights.wo[i]}', mm, weights.wo[i])
-    for i in range(config.n_layers): read_tensor(f'{weights.rms_ffn_weight[i]}', mm, weights.rms_ffn_weight[i])
-    for i in range(config.n_layers): read_tensor(f'{weights.w1[i]}', mm, weights.w1[i])
-    for i in range(config.n_layers): read_tensor(f'{weights.w2[i]}', mm, weights.w2[i])
-    for i in range(config.n_layers): read_tensor(f'{weights.w3[i]}', mm, weights.w3[i])
-    read_tensor('rms_final_weight', mm, weights.rms_final_weight)
-    read_tensor('freq_cis_real', mm, weights.freq_cis_real)
-    read_tensor('freq_cis_imag', mm, weights.freq_cis_imag)
-    if not shared_weights:
-        read_tensor('wcls', mm, weights.wcls)
-
-    # print('FINISHED READING TransformerWeights')
+    checkpoint_init_weights(mm, config, weights)
+    
     mm.close()
     os.close(fd)
 
-    with tokenizer_model.open('rb') as fd:
-        max_token_length = read_format(fd, '<i')[0]
-        vocab = []
-        vocab_scores = []
-        for i in range(config.vocab_size):
-            vocab_scores.append(read_format(fd, '<f')[0])
-            vocab.append(fd.read(read_format(fd, '<i')[0]).decode('utf-8'))
-
-        sorted_vocab = [TokenIndex(str, i) for i, str in enumerate(vocab)]
-        sorted_vocab.sort(key=lambda x: x.str)
-
-        v = Vocabulary(config.vocab_size, vocab, vocab_scores, max_token_length, sorted_vocab)
-        # print('FINISHED READING Vocabulary')
-
+    vocab = read_vocab(tokenizer_model, config)
     state = RunState(config, ctx, tensor_type)
-    # print('FINISHED BUILDING RunState')
 
     # process the prompt, if any
     prompt_tokens = None
     if prompt is not None:
-        prompt_tokens = bpe_encode(prompt, v)
+        prompt_tokens = bpe_encode(prompt, vocab)
         steps += len(prompt_tokens)
 
-    print('FINISHED PROCESSING PROMPT')
-    print(prompt_tokens)
+    print('prompt_tokens', prompt_tokens)
 
     # start the main loop
     start = 0  # used to time our code, only initialized after first iteration
@@ -490,7 +495,7 @@ def run(
         if (next == 1): break
 
         # following BOS (1) token, sentencepiece decoder strips any leading whitespace (see PR #89)
-        token_str = v.vocab[next]+1 if (token == 1 and v.vocab[next][0] == ' ') else v.vocab[next]
+        token_str = vocab.vocab[next]+1 if (token == 1 and vocab.vocab[next][0] == ' ') else vocab.vocab[next]
         sys.stdout.write(token_str)
         sys.stdout.flush()
         lib.ggml_set_i32(token, next)
