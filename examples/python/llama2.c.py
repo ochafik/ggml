@@ -245,11 +245,21 @@ def transformer(ctx: Context, token: int, pos: int, p: Config, s: RunState, w: T
     
     def mul(ctx, a, b):
         return lib.ggml_mul(ctx, a, b)
+    
+    def rope(ctx, a, pos):
+        return lib.ggml_reshape_1d(
+            ctx,
+            # Broadcast rope encoding to all heads
+            lib.ggml_rope_custom_inplace(
+                ctx,
+                lib.ggml_reshape_2d(ctx, a, p.head_size, p.n_kv_heads),
+                pos, p.head_size, 0, 0, rope_freq_base, rope_freq_scale),
+            p.dim)
 
     # forward all the layers
     for l in range(p.n_layers):
         
-        # Fused graph for attention rmsnorm & qkv matmuls for this position
+        # Fused graph for attention rmsnorm, qkv matmuls, RoPE encoding of q & k for this position
         (q, k, v) = ctx.execute(
             "rmsnorm + qkv matmuls",
             {
@@ -259,32 +269,15 @@ def transformer(ctx: Context, token: int, pos: int, p: Config, s: RunState, w: T
                 "wk": w.wk[l],
                 "wv": w.wv[l]
             }, {
-                "xb": lambda ctx, x, att_w:
-                    # attention rmsnorm
-                    rmsnorm(ctx, x, att_w),
+                # attention rmsnorm
+                "normout": lambda ctx, x, att_w: rmsnorm(ctx, x, att_w),
             },
-            lambda ctx, xb, wq, wk, wv: (
-                # qkv matmuls for this position
-                mulmat(ctx, xb, wq), # q = xb * wq
-                mulmat(ctx, xb, wk), # k = xb * wk
-                mulmat(ctx, xb, wv), # v = xb * wv
+            # qkv matmuls for this position and RoPE for q & k
+            lambda ctx, normout, wq, wk, wv: (
+                rope(ctx, mulmat(ctx, normout, wq), pos), # per-head RoPE(q = normout * wq)
+                rope(ctx, mulmat(ctx, normout, wk), pos), # per-head RoPE(k = normout * wk)
+                mulmat(ctx, normout, wv), # v = normout * wv
             ))
-        q_ = numpy(q).reshape((dim,))
-        k_ = numpy(k).reshape((dim,))
-        q_heads_ = q_.reshape(p.n_heads, p.head_size)
-
-        # RoPE relative positional encoding: complex-valued rotate q and k by freq_cis in each head
-        for i in range(0, dim, 2):
-            q0 = q_[i]
-            q1 = q_[i+1]
-            k0 = k_[i]
-            k1 = k_[i+1]
-            fcr = freq_cis_real_row[(i % head_size) // 2]
-            fci = freq_cis_imag_row[(i % head_size) // 2]
-            q_[i]   = q0 * fcr - q1 * fci
-            q_[i+1] = q0 * fci + q1 * fcr
-            k_[i]   = k0 * fcr - k1 * fci
-            k_[i+1] = k0 * fci + k1 * fcr
 
         # save key,value at this time step (pos) to our kv cache
         copy(k, s.key_cache_[l, pos])
@@ -292,6 +285,9 @@ def transformer(ctx: Context, token: int, pos: int, p: Config, s: RunState, w: T
 
         copy(zero_xb, s.xb_)
 
+        q_ = numpy(q).reshape((dim,))
+        q_heads_ = q_.reshape(p.n_heads, p.head_size)
+        
         # multihead attention. iterate over all heads
         for h in range(p.n_heads):
             # get the query vector for this head
