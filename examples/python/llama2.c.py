@@ -444,48 +444,6 @@ def transformer(ctx: Context, token: int, pos: int, p: Config, s: RunState, w: T
                     s.xb_heads_[h, i] += a * v[i]
 
         x = ctx.execute(
-            "...",
-            {   
-                "x": x,
-                "xb": s.xb,
-                "ffn_w": w.rms_ffn_weight[l],
-                "w1": w.w1[l],
-                "w2": w.w2[l],
-                "w3": w.w3[l],
-                "wo": w.wo[l],
-            },
-            {
-                "xx": lambda ctx, x, xb, wo:
-                    # residual connection back into x
-                    add(
-                        ctx, x,
-                        # projection (no bias)
-                        # final matmul to get the output of the attention   
-                        mulmat(ctx, xb, wo)
-                    ),
-                "normout": lambda ctx, xx, ffn_w:
-                    # ffn rmsnorm
-                    rmsnorm(
-                        ctx,
-                        xx,
-                        ffn_w)
-            },
-            lambda ctx, normout, xx, w1, w2, w3:
-                # residual connection
-                add(ctx, xx, 
-                    # final matmul by w2 to get the output of the ffn
-                    mulmat(
-                        ctx,
-                        # silu(w1(x)) elementwise multiplied w3(x)
-                        mul(
-                            ctx,
-                            # silu(w1(x))
-                            lib.ggml_silu(ctx, mulmat(ctx, normout, w1)),
-                            # w3(x)
-                            mulmat(ctx, normout, w3)),
-                        w2)))
-
-    x = ctx.execute(
             "attention",
             {   
                 "x": x,
@@ -526,6 +484,7 @@ def transformer(ctx: Context, token: int, pos: int, p: Config, s: RunState, w: T
                             # w3(x)
                             mulmat(ctx, normout, w3)),
                         w2)))
+
     # final rmsnorm
     ctx.rmsnorm(x, x, w.rms_final_weight)
     # rmsnorm(ctx, x_, x_, w.rms_final_weight_, dim)
