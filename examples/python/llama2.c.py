@@ -181,15 +181,15 @@ class Context:
             outputs,
         )
 
-    def execute(self, name, inputs, intermediates, out, n_threads=None):
+    def execute(self, name, inputs, intermediates, out, n_threads=None, cache=True):
         input_shapes = {
             name: MatrixShape(input.type, _get_shape(input), transpose=False)
             for name, input in inputs.items()
         }
-        key = (name, tuple(input_shapes))
         def make_graph():
             return self._create_graph(input_shapes, intermediates, out)
-        (g, vars, outs) = self._get_cache(key, make_graph)
+        (g, vars, outs) = self._get_cache((name, tuple(input_shapes)), make_graph) \
+            if cache else make_graph()
 
         for name, input in inputs.items():
             ffi.memmove(vars[name].data, input.data, lib.ggml_nbytes(input))
