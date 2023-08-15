@@ -182,13 +182,14 @@ class Context:
         )
 
     def execute(self, name, inputs, intermediates, out, n_threads=None):
-        # Is iteration of dict literals always in same order in same process?
         input_shapes = {
             name: MatrixShape(input.type, _get_shape(input), transpose=False)
             for name, input in inputs.items()
         }
-        (g, vars, outs) = self._get_cache((name, tuple(input_shapes)), lambda: \
-                            self._create_graph(input_shapes, intermediates, out))
+        key = (name, tuple(input_shapes))
+        def make_graph():
+            return self._create_graph(input_shapes, intermediates, out)
+        (g, vars, outs) = self._get_cache(key, make_graph)
 
         for name, input in inputs.items():
             ffi.memmove(vars[name].data, input.data, lib.ggml_nbytes(input))
@@ -215,6 +216,7 @@ def transformer(ctx: Context, token: int, pos: int, p: Config, s: RunState, w: T
     x_ = s.x_
     dim = p.dim
     head_size = dim // p.n_heads
+    head_size_sqrt = math.sqrt(head_size)
     assert dim % p.n_heads == 0
 
     # copy the token embedding into x
@@ -226,7 +228,7 @@ def transformer(ctx: Context, token: int, pos: int, p: Config, s: RunState, w: T
     freq_cis_real_row = w.freq_cis_real_[pos]
     freq_cis_imag_row = w.freq_cis_imag_[pos]
 
-    zero_head = np.zeros(head_size, dtype)
+    zero_xb = np.zeros(dim, dtype)
 
     def rmsnorm(ctx, x, w):
         return lib.ggml_mul(ctx, lib.ggml_rms_norm(ctx, x, rms_norm_eps), w)
@@ -288,6 +290,8 @@ def transformer(ctx: Context, token: int, pos: int, p: Config, s: RunState, w: T
         copy(k, s.key_cache_[l, pos])
         copy(v, s.value_cache_[l, pos])
 
+        copy(zero_xb, s.xb_)
+
         # multihead attention. iterate over all heads
         for h in range(p.n_heads):
             # get the query vector for this head
@@ -299,10 +303,7 @@ def transformer(ctx: Context, token: int, pos: int, p: Config, s: RunState, w: T
                 # get the key vector for this head and at this timestep
                 k = s.key_cache_heads_[l, t, h]
                 # calculate the attention score as the dot product of q and k
-                score = 0.0
-                for i in range(head_size):
-                    score += q[i] * k[i]
-                score /= math.sqrt(head_size)
+                score = np.dot(q, k) / head_size_sqrt
                 # save the score to the attention buffer
                 att[t] = score
 
@@ -310,7 +311,6 @@ def transformer(ctx: Context, token: int, pos: int, p: Config, s: RunState, w: T
             att[0:pos+1] = sp.special.softmax(att[0:pos+1])
 
             # weighted sum of the values, store back into xb
-            copy(zero_head, s.xb_heads_[h])
 
             for t in range(pos+1):
                 # get the value vector for this head and at this timestep
