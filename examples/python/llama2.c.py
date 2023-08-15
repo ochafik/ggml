@@ -3,10 +3,10 @@
 # Use faster tokenization, and naively allocate buffers in GGML / wrap them to numpy
 
 # cmake ../../../llama.cpp -B /tmp/llama_release -DLLAMA_METAL=1 -DBUILD_SHARED_LIBS=1 -DCMAKE_BUILD_TYPE=Release && ( cd /tmp/llama_release && make -j )
-# import os; os.environ['GGML_LIBRARY'] = '/tmp/llama_release/libggml_shared.dylib'
+import os; os.environ['GGML_LIBRARY'] = '/tmp/llama_release/libggml_shared.dylib'
 
 # cmake ../../../llama.cpp -B /tmp/llama_debug -DLLAMA_METAL=1 -DBUILD_SHARED_LIBS=1 -DCMAKE_BUILD_TYPE=Debug && ( cd /tmp/llama_debug && make -j )
-import os; os.environ['GGML_LIBRARY'] = '/tmp/llama_debug/libggml_shared.dylib'
+# import os; os.environ['GGML_LIBRARY'] = '/tmp/llama_debug/libggml_shared.dylib'
 
 # python llama2.c.py ~/AI/Models/llama2.c.stories15M.bin ../../../llama2.c/tokenizer.bin --prompt "Hello, world"
 
@@ -21,6 +21,7 @@ import struct, os, mmap, math, sys, time
 
 Tensor = ffi.CData
 Context = ffi.CData
+TensorLike = Union[Tensor, np.ndarray]
 
 __tensor_factories = {
     1: lib.ggml_new_tensor_1d,
@@ -29,11 +30,13 @@ __tensor_factories = {
     4: lib.ggml_new_tensor_4d,
 }
 
+def _get_shape(x: TensorLike): return x.shape if isinstance(x, np.ndarray) else tuple([x.ne[i] for i in range(x.n_dims)])
+
 def _new_tensor(ctx, shape, type):
     factory = __tensor_factories[len(shape)]
     if factory:
         return factory(ctx, type, *shape)
-    
+
     dims = ffi.new('int[]', len(shape))
     for i, dim in enumerate(shape): dims[i] = dim
     return lib.ggml_new_tensor(ctx, type, len(shape), dims)
@@ -67,17 +70,16 @@ class TransformerWeights:
         self.wv = [_new_tensor(ctx, (p.dim, p.dim), type) for _ in range(p.n_layers)]
         self.wo = [_new_tensor(ctx, (p.dim, p.dim), type) for _ in range(p.n_layers)]
         # weights for ffn
-        self.w1 = [_new_tensor(ctx, (p.hidden_dim, p.dim), type) for _ in range(p.n_layers)]
-        self.w2 = [_new_tensor(ctx, (p.dim, p.hidden_dim), type) for _ in range(p.n_layers)]
-        self.w3 = [_new_tensor(ctx, (p.hidden_dim, p.dim), type) for _ in range(p.n_layers)]
+        self.w1 = [_new_tensor(ctx, (p.dim, p.hidden_dim), type) for _ in range(p.n_layers)]
+        self.w2 = [_new_tensor(ctx, (p.hidden_dim, p.dim), type) for _ in range(p.n_layers)]
+        self.w3 = [_new_tensor(ctx, (p.dim, p.hidden_dim), type) for _ in range(p.n_layers)]
         # final rmsnorm
         self.rms_final_weight = _new_tensor(ctx, (p.dim,), type)
         # freq_cis for RoPE relatively positional embeddings
         self.freq_cis_real = _new_tensor(ctx, (p.seq_len, p.head_size // 2), type)
         self.freq_cis_imag = _new_tensor(ctx, (p.seq_len, p.head_size // 2), type)
         # (optional) classifier weights for the logits, on the last layer
-        self.wcls = _new_tensor(ctx, (p.dim, p.vocab_size), type) \
-            if shared_weights else self.token_embedding_table
+        self.wcls = _new_tensor(ctx, (p.dim, p.vocab_size), type)
         self.shared_weights = shared_weights
 
         # numpy array views of each tensor
@@ -125,7 +127,7 @@ class RunState:
         # buffer for scores/attention values
         self.att = _new_tensor(ctx, (config.n_heads, config.seq_len), tensor_type)
         # output logits
-        self.logits = _new_tensor(ctx, (config.vocab_size,), tensor_type)
+        self.logits = _new_tensor(ctx, (1, config.vocab_size), tensor_type)
         # kv cache
         self.key_cache = _new_tensor(ctx, (config.n_layers, config.seq_len, config.dim), tensor_type)
         self.value_cache = _new_tensor(ctx, (config.n_layers, config.seq_len, config.dim), tensor_type)
@@ -141,7 +143,7 @@ class RunState:
         self.k_ = numpy(self.k)
         self.v_ = numpy(self.v)
         self.att_ = numpy(self.att)
-        self.logits_ = numpy(self.logits)
+        self.logits_ = numpy(self.logits).transpose()
         self.key_cache_ = numpy(self.key_cache)
         self.value_cache_ = numpy(self.value_cache)
         # Split these by heads for convenience
@@ -163,17 +165,16 @@ class Vocabulary:
     # Sorted vocabulary tokens and their corresponding id for log(vocab_size) lookups.
     sorted_vocab: list[TokenIndex]
 
-TensorLike = Union[Tensor, np.ndarray]
 def get_np(a: TensorLike) -> np.ndarray:
     if isinstance(a, np.ndarray): return a
     return numpy(a)
 
-def accum(a: TensorLike, b: TensorLike, size: int):
+def accum(ctx, a: TensorLike, b: TensorLike, size: int):
     a, b = get_np(a), get_np(b)
     for i in range(size):
         a[i] += b[i]
 
-def rmsnorm(o: TensorLike, x: TensorLike, weight: TensorLike, size: int):
+def rmsnorm(ctx, o: TensorLike, x: TensorLike, weight: TensorLike, size: int):
     o, x, weight = get_np(o), get_np(x), get_np(weight)
     # calculate sum of squares
     ss = 0.0
@@ -202,7 +203,58 @@ def softmax(x: TensorLike, size: int):
     for i in range(size):
         x[i] /= sum
 
-def matmul(xout: TensorLike, x: TensorLike, w: TensorLike, n: int, d: int):
+@dataclass(frozen=True)
+class MatrixInput:
+    type: int
+    shape: tuple[int]
+    transpose: bool
+
+def _make_input(t, transpose):
+    return MatrixInput(t.type, _get_shape(t), transpose)
+                       
+class MatMulGraph:
+    def __init__(self, ctx, a: MatrixInput, b: MatrixInput):
+        self.a = _new_tensor(ctx, a.shape, a.type)
+        self.b = _new_tensor(ctx, b.shape, b.type)
+        self.out = lib.ggml_mul_mat(
+            ctx,
+            lib.ggml_transpose(ctx, self.a) if a.transpose else self.a,
+            lib.ggml_transpose(ctx, self.b) if b.transpose else self.b,
+        )
+        self.gf = lib.ggml_new_graph(ctx)
+        lib.ggml_build_forward_expand(self.gf, self.out)
+
+class Context:
+    def __init__(self, ctx: ffi.CData, n_threads: int):
+        self.ctx = ctx
+        self.cache = {}
+        self.n_threads = n_threads
+
+    def matmul(self, out, a, b, transpose_a=False, transpose_b=False):
+        ane = [a.ne[i] for i in range(a.n_dims)]
+        bne = [b.ne[i] for i in range(b.n_dims)]
+        ai = _make_input(a, transpose_a)
+        bi = _make_input(b, transpose_b)
+        g = self._get_cache(('matmul', ai, bi), 
+                            lambda: MatMulGraph(self.ctx, ai, bi))
+        ffi.memmove(g.a.data, a.data, lib.ggml_nbytes(a))
+        ffi.memmove(g.b.data, b.data, lib.ggml_nbytes(b))
+        # copy(a, g.a)
+        # copy(b, g.b)
+        lib.ggml_graph_compute_with_ctx(self.ctx, g.gf, self.n_threads)
+        # copy(g.out, out)
+        ffi.memmove(out.data, g.out.data, lib.ggml_nbytes(out))
+
+    def _get_cache(self, key, factory: Callable[[], Any]):
+        val = self.cache.get(key)
+        if val is None:
+            val = factory()
+            self.cache[key] = val
+        return val
+    
+def matmul(ctx: Context, xout: TensorLike, x: TensorLike, w: TensorLike, n: int, d: int):
+    # ctx.matmul(xout, x, w)
+
     xout, x, w = get_np(xout), get_np(x), get_np(w)
     # W (d,n) @ x (n,) -> xout (d,)
     # by far the most amount of time is spent inside this little function
@@ -211,8 +263,8 @@ def matmul(xout: TensorLike, x: TensorLike, w: TensorLike, n: int, d: int):
         for j in range(n):
             val += w[i, j] * x[j]
         xout[i] = val
-    
-def transformer(ctx, token: int, pos: int, p: Config, s: RunState, w: TransformerWeights):
+
+def transformer(ctx: Context, token: int, pos: int, p: Config, s: RunState, w: TransformerWeights):
     dtype = np.float32
 
     # a few convenience variables
@@ -233,15 +285,20 @@ def transformer(ctx, token: int, pos: int, p: Config, s: RunState, w: Transforme
     freq_cis_real_row = w.freq_cis_real_[pos]
     freq_cis_imag_row = w.freq_cis_imag_[pos]
 
+    zero_head = np.zeros(head_size, dtype)
+
     # forward all the layers
     for l in range(p.n_layers):
         # attention rmsnorm
-        rmsnorm(s.xb_, x_, w.rms_att_weight_[l], dim)
+        rmsnorm(ctx, s.xb_, x_, w.rms_att_weight_[l], dim)
 
         # qkv matmuls for this position
-        matmul(s.q, s.xb, w.wq[l], dim, dim)
-        matmul(s.k, s.xb, w.wk[l], dim, dim)
-        matmul(s.v, s.xb, w.wv[l], dim, dim)
+        ctx.matmul(s.q, s.xb, w.wq[l])
+        ctx.matmul(s.k, s.xb, w.wk[l])
+        ctx.matmul(s.v, s.xb, w.wv[l])
+        # matmul(ctx, s.q_, s.xb_, w.wq_[l], dim, dim)
+        # matmul(ctx, s.k_, s.xb_, w.wk_[l], dim, dim)
+        # matmul(ctx, s.v_, s.xb_, w.wv_[l], dim, dim)
 
         # RoPE relative positional encoding: complex-valued rotate q and k by freq_cis in each head
         for i in range(0, dim, 2):
@@ -282,7 +339,7 @@ def transformer(ctx, token: int, pos: int, p: Config, s: RunState, w: Transforme
             softmax(att, pos + 1)
 
             # weighted sum of the values, store back into xb
-            copy(np.zeros(head_size, dtype), s.xb_heads_[h])
+            copy(zero_head, s.xb_heads_[h])
 
             for t in range(pos+1):
                 # get the value vector for this head and at this timestep
@@ -294,18 +351,23 @@ def transformer(ctx, token: int, pos: int, p: Config, s: RunState, w: Transforme
                     s.xb_heads_[h, i] += a * v[i]
 
         # final matmul to get the output of the attention
-        matmul(s.xb2_, s.xb_, w.wo_[l], dim, dim)
+        ctx.matmul(s.xb2, s.xb, w.wo[l])
+        # matmul(ctx, s.xb2_, s.xb_, w.wo_[l], dim, dim)
 
         # residual connection back into x
-        accum(x_, s.xb2_, dim)
+        accum(ctx, x_, s.xb2_, dim)
 
         # ffn rmsnorm
-        rmsnorm(s.xb_, x, w.rms_ffn_weight_[l], dim)
+        rmsnorm(ctx, s.xb_, x, w.rms_ffn_weight_[l], dim)
 
         # Now for FFN in PyTorch we have: self.w2(F.silu(self.w1(x)) * self.w3(x))
         # first calculate self.w1(x) and self.w3(x)
-        matmul(s.hb_, s.xb_, w.w1_[l], dim, hidden_dim)
-        matmul(s.hb2_, s.xb_, w.w3_[l], dim, hidden_dim)
+        ctx.matmul(s.hb, s.xb, w.w1[l])
+        # ctx.matmul(s.hb, w.w1[l], s.xb)
+        ctx.matmul(s.hb2, s.xb, w.w3[l])
+        # ctx.matmul(s.hb2, w.w3[l], s.xb)
+        # matmul(ctx, s.hb_, s.xb_, w.w1_[l], dim, hidden_dim)
+        # matmul(ctx, s.hb2_, s.xb_, w.w3_[l], dim, hidden_dim)
 
         # F.silu; silu(x)=x*σ(x),where σ(x) is the logistic sigmoid
         for i in range(hidden_dim):
@@ -316,16 +378,18 @@ def transformer(ctx, token: int, pos: int, p: Config, s: RunState, w: Transforme
             s.hb_[i] = s.hb_[i] * s.hb2_[i]
 
         # final matmul to get the output of the ffn
-        matmul(s.xb_, s.hb_, w.w2_[l], hidden_dim, dim)
+        ctx.matmul(s.xb, s.hb, w.w2[l])
+        # matmul(ctx, s.xb_, s.hb_, w.w2_[l], hidden_dim, dim)
 
         # residual connection
-        accum(x_, s.xb_, dim)
+        accum(ctx, x_, s.xb_, dim)
 
     # final rmsnorm
-    rmsnorm(x_, x_, w.rms_final_weight_, dim)
+    rmsnorm(ctx, x_, x_, w.rms_final_weight_, dim)
 
     # classifier into logits
-    matmul(s.logits_, x_, w.wcls_, p.dim, p.vocab_size)
+    ctx.matmul(s.logits, x, w.wcls)
+    # matmul(ctx, s.logits_, x_, w.wcls_, p.dim, p.vocab_size)
 
 
 def lookup_token(str: str, v: Vocabulary):
@@ -400,7 +464,9 @@ def checkpoint_init_weights(mm, p: Config, w: TransformerWeights):
     read_tensor('rms_final_weight', mm, w.rms_final_weight)
     read_tensor('freq_cis_real', mm, w.freq_cis_real)
     read_tensor('freq_cis_imag', mm, w.freq_cis_imag)
-    if not w.shared_weights:
+    if w.shared_weights:
+        copy(np.ascontiguousarray(w.token_embedding_table_.transpose()), w.wcls_)
+    else:
         read_tensor('wcls', mm, w.wcls)
 
 def read_format(f, fmt): return struct.unpack_from(fmt, f.read(struct.calcsize(fmt)))
@@ -426,7 +492,7 @@ def read_vocab(tokenizer_model: Path, config: Config) -> Vocabulary:
 
 def argmax(probabilities: TensorLike) -> int:
     probabilities = get_np(probabilities)
-    (n,) = probabilities.shape
+    (n, _) = probabilities.shape
     # return the index that has the highest probability
     max_i = 0
     max_p = probabilities[0]
@@ -480,8 +546,10 @@ def run(
         tokenizer_model: Path,
         prompt: Optional[str] = None,
         steps: int = 256,
-        temperature: float = 1.0,
+        temperature: float = 0.0,
+        # temperature: float = 1.0,
         seed: Optional[int] = None,
+        n_threads: int = 8,
         topp: float = 0.9): # top-p in nucleus sampling
 
     np.random.seed(seed)
@@ -496,6 +564,7 @@ def run(
     print(config)
 
     ctx = init(mem_size=1024*1024*1024)
+    context = Context(ctx, n_threads)
 
     # type = lib.GGML_TYPE_Q5_K
     tensor_type = lib.GGML_TYPE_F32
@@ -523,10 +592,11 @@ def run(
     token = 1   # init with token 1 (=BOS), as done in Llama-2 sentencepiece tokenizer
     pos = 0     # position in the sequence
 
+    
     while (pos < steps):
 
         # forward the transformer to get logits for the next token
-        transformer(ctx, token, pos, config, state, weights)
+        transformer(context, token, pos, config, state, weights)
 
         # advance the state state machine
         if(pos < (len(prompt_tokens) if prompt_tokens else 0)):
