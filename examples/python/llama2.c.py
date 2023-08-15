@@ -115,10 +115,10 @@ class RunState:
         self.xb = _new_tensor(ctx, (config.dim,), tensor_type)
          # an additional buffer just for convenience (dim,)
         self.xb2 = _new_tensor(ctx, (config.dim,), tensor_type)
-        # buffer for hidden dimension in the ffn (hidden_dim,)
-        self.hb = _new_tensor(ctx, (config.hidden_dim,), tensor_type)
-         # buffer for hidden dimension in the ffn (hidden_dim,)
-        self.hb2 = _new_tensor(ctx, (config.hidden_dim,), tensor_type)
+        # # buffer for hidden dimension in the ffn (hidden_dim,)
+        # self.hb = _new_tensor(ctx, (config.hidden_dim,), tensor_type)
+        #  # buffer for hidden dimension in the ffn (hidden_dim,)
+        # self.hb2 = _new_tensor(ctx, (config.hidden_dim,), tensor_type)
         #  # query
         # self.q = _new_tensor(ctx, (config.dim,), tensor_type)
         # # key
@@ -138,8 +138,8 @@ class RunState:
         self.xb_ = numpy(self.xb)
         self.xb_heads_ = self.xb_.reshape(config.n_heads, config.head_size)
         self.xb2_ = numpy(self.xb2)
-        self.hb_ = numpy(self.hb)
-        self.hb2_ = numpy(self.hb2)
+        # self.hb_ = numpy(self.hb)
+        # self.hb2_ = numpy(self.hb2)
         # self.q_ = numpy(self.q)
         # self.k_ = numpy(self.k)
         # self.v_ = numpy(self.v)
@@ -351,12 +351,27 @@ def transformer(ctx: Context, token: int, pos: int, p: Config, s: RunState, w: T
 
     zero_head = np.zeros(head_size, dtype)
 
+    def rmsnorm(ctx, x, w):
+        return lib.ggml_mul(ctx, lib.ggml_rms_norm(ctx, x, rms_norm_eps), w)
+
+    def mulmat(ctx, a, b):
+        if a.n_dims == 2 and a.ne[0] == 1 and a.ne[0] != b.ne[0]:
+            a = lib.ggml_reshape_1d(ctx, a, a.ne[1])
+        return lib.ggml_mul_mat(ctx, a, b)
+    
+    def add(ctx, a, b):
+        if b.n_dims == 2 and b.ne[0] == 1:
+            b = lib.ggml_reshape_1d(ctx, b, b.ne[1])
+        return lib.ggml_add(ctx, a, b)
+    
+    def mul(ctx, a, b):
+        return lib.ggml_mul(ctx, a, b)
     # forward all the layers
     for l in range(p.n_layers):
         
         # Fused graph for attention rmsnorm & qkv matmuls for this position
         (q, k, v) = ctx.execute(
-            "rmsnorm",
+            "rmsnorm + qkv matmuls",
             {
                 "x": x,
                 "att_w": w.rms_att_weight[l],
@@ -364,28 +379,19 @@ def transformer(ctx: Context, token: int, pos: int, p: Config, s: RunState, w: T
                 "wk": w.wk[l],
                 "wv": w.wv[l]
             }, {
-                "xb": lambda x, att_w:
-                    lib.ggml_mul(ctx.ctx,
-                                 lib.ggml_rms_norm(ctx.ctx, x, rms_norm_eps), att_w),
+                "xb": lambda ctx, x, att_w:
+                    # attention rmsnorm
+                    rmsnorm(ctx, x, att_w),
             },
-            lambda xb, wq, wk, wv: (
-                lib.ggml_mul_mat(ctx.ctx, xb, wq), # q = xb * wq
-                lib.ggml_mul_mat(ctx.ctx, xb, wk), # k = xb * wk
-                lib.ggml_mul_mat(ctx.ctx, xb, wv), # v = xb * wv
+            lambda ctx, xb, wq, wk, wv: (
+                # qkv matmuls for this position
+                mulmat(ctx, xb, wq), # q = xb * wq
+                mulmat(ctx, xb, wk), # k = xb * wk
+                mulmat(ctx, xb, wv), # v = xb * wv
             ))
         q_ = numpy(q).reshape((dim,))
         k_ = numpy(k).reshape((dim,))
-        # v_ = numpy(v)
         q_heads_ = q_.reshape(p.n_heads, p.head_size)
-        
-        # attention rmsnorm
-        # ctx.rmsnorm(s.xb, x, w.rms_att_weight[l])
-        # # rmsnorm(ctx, s.xb_, x_, w.rms_att_weight_[l], dim)
-
-        # # qkv matmuls for this position
-        # ctx.matmul(s.q, s.xb, w.wq[l])
-        # ctx.matmul(s.k, s.xb, w.wk[l])
-        # ctx.matmul(s.v, s.xb, w.wv[l])
 
         # RoPE relative positional encoding: complex-valued rotate q and k by freq_cis in each head
         for i in range(0, dim, 2):
@@ -437,35 +443,89 @@ def transformer(ctx: Context, token: int, pos: int, p: Config, s: RunState, w: T
                 for i in range(head_size):
                     s.xb_heads_[h, i] += a * v[i]
 
-        # final matmul to get the output of the attention
-        ctx.matmul(s.xb2, s.xb, w.wo[l])
+        x = ctx.execute(
+            "...",
+            {   
+                "x": x,
+                "xb": s.xb,
+                "ffn_w": w.rms_ffn_weight[l],
+                "w1": w.w1[l],
+                "w2": w.w2[l],
+                "w3": w.w3[l],
+                "wo": w.wo[l],
+            },
+            {
+                "xx": lambda ctx, x, xb, wo:
+                    # residual connection back into x
+                    add(
+                        ctx, x,
+                        # projection (no bias)
+                        # final matmul to get the output of the attention   
+                        mulmat(ctx, xb, wo)
+                    ),
+                "normout": lambda ctx, xx, ffn_w:
+                    # ffn rmsnorm
+                    rmsnorm(
+                        ctx,
+                        xx,
+                        ffn_w)
+            },
+            lambda ctx, normout, xx, w1, w2, w3:
+                # residual connection
+                add(ctx, xx, 
+                    # final matmul by w2 to get the output of the ffn
+                    mulmat(
+                        ctx,
+                        # silu(w1(x)) elementwise multiplied w3(x)
+                        mul(
+                            ctx,
+                            # silu(w1(x))
+                            lib.ggml_silu(ctx, mulmat(ctx, normout, w1)),
+                            # w3(x)
+                            mulmat(ctx, normout, w3)),
+                        w2)))
 
-        # residual connection back into x
-        accum(ctx, x_, s.xb2_, dim)
-
-        # ffn rmsnorm
-        ctx.rmsnorm(s.xb, x, w.rms_ffn_weight[l])
-        # rmsnorm(ctx, s.xb_, x, w.rms_ffn_weight_[l], dim)
-
-        # Now for FFN in PyTorch we have: self.w2(F.silu(self.w1(x)) * self.w3(x))
-        # first calculate self.w1(x) and self.w3(x)
-        ctx.matmul(s.hb, s.xb, w.w1[l])
-        ctx.matmul(s.hb2, s.xb, w.w3[l])
-
-        # F.silu; silu(x)=x*σ(x),where σ(x) is the logistic sigmoid
-        for i in range(hidden_dim):
-            s.hb_[i] = s.hb_[i] * (1.0 / (1.0 + math.exp(-s.hb_[i])))
-
-        # elementwise multiply with w3(x)
-        for i in range(hidden_dim):
-            s.hb_[i] = s.hb_[i] * s.hb2_[i]
-
-        # final matmul to get the output of the ffn
-        ctx.matmul(s.xb, s.hb, w.w2[l])
-
-        # residual connection
-        accum(ctx, x_, s.xb_, dim)
-
+    x = ctx.execute(
+            "attention",
+            {   
+                "x": x,
+                "xb": s.xb,
+                "ffn_w": w.rms_ffn_weight[l],
+                "w1": w.w1[l],
+                "w2": w.w2[l],
+                "w3": w.w3[l],
+                "wo": w.wo[l],
+            },
+            {
+                "xx": lambda ctx, x, xb, wo:
+                    # residual connection back into x
+                    add(
+                        ctx, x,
+                        # projection (no bias)
+                        # final matmul to get the output of the attention   
+                        mulmat(ctx, xb, wo)
+                    ),
+                "normout": lambda ctx, xx, ffn_w:
+                    # ffn rmsnorm
+                    rmsnorm(
+                        ctx,
+                        xx,
+                        ffn_w)
+            },
+            lambda ctx, normout, xx, w1, w2, w3:
+                # residual connection
+                add(ctx, xx, 
+                    # final matmul by w2 to get the output of the ffn
+                    mulmat(
+                        ctx,
+                        # silu(w1(x)) elementwise multiplied w3(x)
+                        mul(
+                            ctx,
+                            # silu(w1(x))
+                            lib.ggml_silu(ctx, mulmat(ctx, normout, w1)),
+                            # w3(x)
+                            mulmat(ctx, normout, w3)),
+                        w2)))
     # final rmsnorm
     ctx.rmsnorm(x, x, w.rms_final_weight)
     # rmsnorm(ctx, x_, x_, w.rms_final_weight_, dim)
