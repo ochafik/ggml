@@ -84,19 +84,19 @@ class TransformerWeights:
 
         # numpy array views of each tensor
         self.token_embedding_table_ = numpy(self.token_embedding_table)
-        self.rms_att_weight_ = [numpy(w) for w in self.rms_att_weight]
-        self.rms_ffn_weight_ = [numpy(w) for w in self.rms_ffn_weight]
-        self.wq_ = [numpy(w) for w in self.wq]
-        self.wk_ = [numpy(w) for w in self.wk]
-        self.wv_ = [numpy(w) for w in self.wv]
-        self.wo_ = [numpy(w) for w in self.wo]
-        self.w1_ = [numpy(w) for w in self.w1]
-        self.w2_ = [numpy(w) for w in self.w2]
-        self.w3_ = [numpy(w) for w in self.w3]
-        self.rms_final_weight_ = numpy(self.rms_final_weight)
+        # self.rms_att_weight_ = [numpy(w) for w in self.rms_att_weight]
+        # self.rms_ffn_weight_ = [numpy(w) for w in self.rms_ffn_weight]
+        # self.wq_ = [numpy(w) for w in self.wq]
+        # self.wk_ = [numpy(w) for w in self.wk]
+        # self.wv_ = [numpy(w) for w in self.wv]
+        # self.wo_ = [numpy(w) for w in self.wo]
+        # self.w1_ = [numpy(w) for w in self.w1]
+        # self.w2_ = [numpy(w) for w in self.w2]
+        # self.w3_ = [numpy(w) for w in self.w3]
+        # self.rms_final_weight_ = numpy(self.rms_final_weight)
         self.freq_cis_real_ = numpy(self.freq_cis_real)
         self.freq_cis_imag_ = numpy(self.freq_cis_imag)
-        self.wcls_ = numpy(self.wcls)
+        # self.wcls_ = numpy(self.wcls)
 
 # struct used when sorting probabilities during top-p sampling
 @dataclass
@@ -209,7 +209,7 @@ class MatrixInput:
     shape: tuple[int]
     transpose: bool
 
-def _make_input(t, transpose):
+def _make_input(t, transpose=False):
     return MatrixInput(t.type, _get_shape(t), transpose)
                        
 class MatMulGraph:
@@ -224,6 +224,17 @@ class MatMulGraph:
         self.gf = lib.ggml_new_graph(ctx)
         lib.ggml_build_forward_expand(self.gf, self.out)
 
+class RmsNormGraph:
+    def __init__(self, ctx, x, w):
+        self.x = _new_tensor(ctx, x.shape, x.type)
+        self.w = _new_tensor(ctx, w.shape, w.type)
+        self.out = lib.ggml_mul(
+            ctx,
+            lib.ggml_rms_norm(ctx, self.x, rms_norm_eps),
+            self.w) # x = x*ffn_norm(broadcasted)
+        self.gf = lib.ggml_new_graph(ctx)
+        lib.ggml_build_forward_expand(self.gf, self.out)
+
 class Context:
     def __init__(self, ctx: ffi.CData, n_threads: int):
         self.ctx = ctx
@@ -231,8 +242,8 @@ class Context:
         self.n_threads = n_threads
 
     def matmul(self, out, a, b, transpose_a=False, transpose_b=False):
-        ane = [a.ne[i] for i in range(a.n_dims)]
-        bne = [b.ne[i] for i in range(b.n_dims)]
+        # ane = [a.ne[i] for i in range(a.n_dims)]
+        # bne = [b.ne[i] for i in range(b.n_dims)]
         ai = _make_input(a, transpose_a)
         bi = _make_input(b, transpose_b)
         g = self._get_cache(('matmul', ai, bi), 
@@ -241,6 +252,21 @@ class Context:
         ffi.memmove(g.b.data, b.data, lib.ggml_nbytes(b))
         # copy(a, g.a)
         # copy(b, g.b)
+        lib.ggml_graph_compute_with_ctx(self.ctx, g.gf, self.n_threads)
+        # copy(g.out, out)
+        ffi.memmove(out.data, g.out.data, lib.ggml_nbytes(out))
+
+    def rmsnorm(self, out, x, w):
+        # ane = [a.ne[i] for i in range(a.n_dims)]
+        # bne = [b.ne[i] for i in range(b.n_dims)]
+        xi = _make_input(x)
+        wi = _make_input(w)
+        g = self._get_cache(('rmsnorm', xi, wi), 
+                            lambda: RmsNormGraph(self.ctx, xi, wi))
+        ffi.memmove(g.x.data, x.data, lib.ggml_nbytes(x))
+        ffi.memmove(g.w.data, w.data, lib.ggml_nbytes(w))
+        # copy(x, g.x)
+        # copy(w, g.w)
         lib.ggml_graph_compute_with_ctx(self.ctx, g.gf, self.n_threads)
         # copy(g.out, out)
         ffi.memmove(out.data, g.out.data, lib.ggml_nbytes(out))
@@ -290,15 +316,13 @@ def transformer(ctx: Context, token: int, pos: int, p: Config, s: RunState, w: T
     # forward all the layers
     for l in range(p.n_layers):
         # attention rmsnorm
-        rmsnorm(ctx, s.xb_, x_, w.rms_att_weight_[l], dim)
+        ctx.rmsnorm(s.xb, x, w.rms_att_weight[l])
+        # rmsnorm(ctx, s.xb_, x_, w.rms_att_weight_[l], dim)
 
         # qkv matmuls for this position
         ctx.matmul(s.q, s.xb, w.wq[l])
         ctx.matmul(s.k, s.xb, w.wk[l])
         ctx.matmul(s.v, s.xb, w.wv[l])
-        # matmul(ctx, s.q_, s.xb_, w.wq_[l], dim, dim)
-        # matmul(ctx, s.k_, s.xb_, w.wk_[l], dim, dim)
-        # matmul(ctx, s.v_, s.xb_, w.wv_[l], dim, dim)
 
         # RoPE relative positional encoding: complex-valued rotate q and k by freq_cis in each head
         for i in range(0, dim, 2):
@@ -352,22 +376,18 @@ def transformer(ctx: Context, token: int, pos: int, p: Config, s: RunState, w: T
 
         # final matmul to get the output of the attention
         ctx.matmul(s.xb2, s.xb, w.wo[l])
-        # matmul(ctx, s.xb2_, s.xb_, w.wo_[l], dim, dim)
 
         # residual connection back into x
         accum(ctx, x_, s.xb2_, dim)
 
         # ffn rmsnorm
-        rmsnorm(ctx, s.xb_, x, w.rms_ffn_weight_[l], dim)
+        ctx.rmsnorm(s.xb, x, w.rms_ffn_weight[l])
+        # rmsnorm(ctx, s.xb_, x, w.rms_ffn_weight_[l], dim)
 
         # Now for FFN in PyTorch we have: self.w2(F.silu(self.w1(x)) * self.w3(x))
         # first calculate self.w1(x) and self.w3(x)
         ctx.matmul(s.hb, s.xb, w.w1[l])
-        # ctx.matmul(s.hb, w.w1[l], s.xb)
         ctx.matmul(s.hb2, s.xb, w.w3[l])
-        # ctx.matmul(s.hb2, w.w3[l], s.xb)
-        # matmul(ctx, s.hb_, s.xb_, w.w1_[l], dim, hidden_dim)
-        # matmul(ctx, s.hb2_, s.xb_, w.w3_[l], dim, hidden_dim)
 
         # F.silu; silu(x)=x*σ(x),where σ(x) is the logistic sigmoid
         for i in range(hidden_dim):
@@ -379,17 +399,16 @@ def transformer(ctx: Context, token: int, pos: int, p: Config, s: RunState, w: T
 
         # final matmul to get the output of the ffn
         ctx.matmul(s.xb, s.hb, w.w2[l])
-        # matmul(ctx, s.xb_, s.hb_, w.w2_[l], hidden_dim, dim)
 
         # residual connection
         accum(ctx, x_, s.xb_, dim)
 
     # final rmsnorm
-    rmsnorm(ctx, x_, x_, w.rms_final_weight_, dim)
+    ctx.rmsnorm(x, x, w.rms_final_weight)
+    # rmsnorm(ctx, x_, x_, w.rms_final_weight_, dim)
 
     # classifier into logits
     ctx.matmul(s.logits, x, w.wcls)
-    # matmul(ctx, s.logits_, x_, w.wcls_, p.dim, p.vocab_size)
 
 
 def lookup_token(str: str, v: Vocabulary):
@@ -445,22 +464,24 @@ def bpe_encode(text: str, v: Vocabulary) -> list[int]:
 
     return tokens
 
-def read_tensor(name: str, f, tensor: ffi.CData):
+def read_tensor(name: str, f, tensor: ffi.CData, permute=False):
     shape = tuple([tensor.ne[i] for i in range(tensor.n_dims)])
     nbytes = np.prod(shape) * ffi.sizeof('float')
-    copy(np.frombuffer(f.read(nbytes), dtype=np.float32).reshape(shape), tensor)
+    array = np.frombuffer(f.read(nbytes), dtype=np.float32).reshape(shape)
+    # if permute: array = np.ascontiguousarray(np.transpose(array)).reshape(shape)
+    copy(array, tensor)
 
 def checkpoint_init_weights(mm, p: Config, w: TransformerWeights):
     read_tensor("token_embedding_table", mm, w.token_embedding_table)
     for i in range(p.n_layers): read_tensor(f'{w.rms_att_weight[i]}', mm, w.rms_att_weight[i])
-    for i in range(p.n_layers): read_tensor(f'{w.wq[i]}', mm, w.wq[i])
-    for i in range(p.n_layers): read_tensor(f'{w.wk[i]}', mm, w.wk[i])
-    for i in range(p.n_layers): read_tensor(f'{w.wv[i]}', mm, w.wv[i])
-    for i in range(p.n_layers): read_tensor(f'{w.wo[i]}', mm, w.wo[i])
-    for i in range(p.n_layers): read_tensor(f'{w.rms_ffn_weight[i]}', mm, w.rms_ffn_weight[i])
-    for i in range(p.n_layers): read_tensor(f'{w.w1[i]}', mm, w.w1[i])
-    for i in range(p.n_layers): read_tensor(f'{w.w2[i]}', mm, w.w2[i])
-    for i in range(p.n_layers): read_tensor(f'{w.w3[i]}', mm, w.w3[i])
+    for i in range(p.n_layers): read_tensor(f'{w.wq[i]}', mm, w.wq[i], permute=True)
+    for i in range(p.n_layers): read_tensor(f'{w.wk[i]}', mm, w.wk[i], permute=True)
+    for i in range(p.n_layers): read_tensor(f'{w.wv[i]}', mm, w.wv[i], permute=True)
+    for i in range(p.n_layers): read_tensor(f'{w.wo[i]}', mm, w.wo[i], permute=True)
+    for i in range(p.n_layers): read_tensor(f'{w.rms_ffn_weight[i]}', mm, w.rms_ffn_weight[i], permute=True)
+    for i in range(p.n_layers): read_tensor(f'{w.w1[i]}', mm, w.w1[i], permute=True)
+    for i in range(p.n_layers): read_tensor(f'{w.w2[i]}', mm, w.w2[i], permute=True)
+    for i in range(p.n_layers): read_tensor(f'{w.w3[i]}', mm, w.w3[i], permute=True)
     read_tensor('rms_final_weight', mm, w.rms_final_weight)
     read_tensor('freq_cis_real', mm, w.freq_cis_real)
     read_tensor('freq_cis_imag', mm, w.freq_cis_imag)
