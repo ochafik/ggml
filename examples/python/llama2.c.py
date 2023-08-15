@@ -17,7 +17,8 @@ from dataclasses import dataclass
 from typing import List, Tuple, Optional, Union, Dict, Any, Callable, TypeVar, Generic
 from jsonargparse import CLI
 from pathlib import Path
-import struct, os, mmap, math, sys, time
+import struct, os, mmap, math, sys, time, inspect
+from collections import namedtuple
 
 Tensor = ffi.CData
 Context = ffi.CData
@@ -118,12 +119,12 @@ class RunState:
         self.hb = _new_tensor(ctx, (config.hidden_dim,), tensor_type)
          # buffer for hidden dimension in the ffn (hidden_dim,)
         self.hb2 = _new_tensor(ctx, (config.hidden_dim,), tensor_type)
-         # query
-        self.q = _new_tensor(ctx, (config.dim,), tensor_type)
-        # key
-        self.k = _new_tensor(ctx, (config.dim,), tensor_type)
-        # value
-        self.v = _new_tensor(ctx, (config.dim,), tensor_type)
+        #  # query
+        # self.q = _new_tensor(ctx, (config.dim,), tensor_type)
+        # # key
+        # self.k = _new_tensor(ctx, (config.dim,), tensor_type)
+        # # value
+        # self.v = _new_tensor(ctx, (config.dim,), tensor_type)
         # buffer for scores/attention values
         self.att = _new_tensor(ctx, (config.n_heads, config.seq_len), tensor_type)
         # output logits
@@ -139,15 +140,15 @@ class RunState:
         self.xb2_ = numpy(self.xb2)
         self.hb_ = numpy(self.hb)
         self.hb2_ = numpy(self.hb2)
-        self.q_ = numpy(self.q)
-        self.k_ = numpy(self.k)
-        self.v_ = numpy(self.v)
+        # self.q_ = numpy(self.q)
+        # self.k_ = numpy(self.k)
+        # self.v_ = numpy(self.v)
         self.att_ = numpy(self.att)
         self.logits_ = numpy(self.logits).transpose()
         self.key_cache_ = numpy(self.key_cache)
         self.value_cache_ = numpy(self.value_cache)
         # Split these by heads for convenience
-        self.q_heads_ = self.q_.reshape(config.n_heads, config.head_size)
+        # self.q_heads_ = self.q_.reshape(config.n_heads, config.head_size)
         self.key_cache_heads_ = self.key_cache_.reshape(config.n_layers, config.seq_len, config.n_heads, config.head_size)
         self.value_cache_heads_ = self.value_cache_.reshape(config.n_layers, config.seq_len, config.n_heads, config.head_size)
 
@@ -204,16 +205,16 @@ def softmax(x: TensorLike, size: int):
         x[i] /= sum
 
 @dataclass(frozen=True)
-class MatrixInput:
+class MatrixShape:
     type: int
     shape: tuple[int]
     transpose: bool
 
-def _make_input(t, transpose=False):
-    return MatrixInput(t.type, _get_shape(t), transpose)
-                       
+def _make_input_shape(t, transpose=False):
+    return MatrixShape(t.type, _get_shape(t), transpose)
+          
 class MatMulGraph:
-    def __init__(self, ctx, a: MatrixInput, b: MatrixInput):
+    def __init__(self, ctx, a: MatrixShape, b: MatrixShape):
         self.a = _new_tensor(ctx, a.shape, a.type)
         self.b = _new_tensor(ctx, b.shape, b.type)
         self.out = lib.ggml_mul_mat(
@@ -238,14 +239,59 @@ class RmsNormGraph:
 class Context:
     def __init__(self, ctx: ffi.CData, n_threads: int):
         self.ctx = ctx
+        # self.ctx_metal = lib.ggml_metal_init(1)
+        # ggml_metal_add_buffer(ctx->ctx_metal, "data", data_ptr, data_size, max_size)
         self.cache = {}
         self.n_threads = n_threads
 
-    def matmul(self, out, a, b, transpose_a=False, transpose_b=False):
+    def _create_graph(self, input_shapes, intermediates, out):
+        vars = {
+            name: _new_tensor(self.ctx, input.shape, input.type)
+            for name, input in input_shapes.items()
+        }
+        
+        def invoke(f):
+            argnames = inspect.getfullargspec(f).args
+            args = [self.ctx if n == 'ctx' else vars[n] for n in argnames]
+            return f(*args)
+        
+        for name, f in intermediates.items():
+            vars[name] = invoke(f)
+
+        outputs = invoke(out)
+
+        gf = lib.ggml_new_graph(self.ctx)
+        for output in (outputs if isinstance(outputs, tuple) else [outputs]):
+            lib.ggml_build_forward_expand(gf, output)
+
+        return (
+            gf,
+            vars,
+            outputs,
+        )
+
+    def execute(self, name, inputs, intermediates, out, n_threads=None):
+        # Is iteration of dict literals always in same order in same process?
+        input_shapes = {
+            name: MatrixShape(input.type, _get_shape(input), transpose=False)
+            for name, input in inputs.items()
+        }
+        (g, vars, outs) = self._get_cache((name, tuple(input_shapes)), lambda: \
+                            self._create_graph(input_shapes, intermediates, out))
+
+        for name, input in inputs.items():
+            ffi.memmove(vars[name].data, input.data, lib.ggml_nbytes(input))
+
+        lib.ggml_graph_compute_with_ctx(self.ctx, g, n_threads or self.n_threads)
+        return outs
+
+    def matmul(self, out, a, b):
+        # matmul(self.ctx, numpy(out), numpy(a), numpy(b))
+        # return
         # ane = [a.ne[i] for i in range(a.n_dims)]
         # bne = [b.ne[i] for i in range(b.n_dims)]
-        ai = _make_input(a, transpose_a)
-        bi = _make_input(b, transpose_b)
+        ai = _make_input_shape(a)
+        bi = _make_input_shape(b)
         g = self._get_cache(('matmul', ai, bi), 
                             lambda: MatMulGraph(self.ctx, ai, bi))
         ffi.memmove(g.a.data, a.data, lib.ggml_nbytes(a))
@@ -259,8 +305,8 @@ class Context:
     def rmsnorm(self, out, x, w):
         # ane = [a.ne[i] for i in range(a.n_dims)]
         # bne = [b.ne[i] for i in range(b.n_dims)]
-        xi = _make_input(x)
-        wi = _make_input(w)
+        xi = _make_input_shape(x)
+        wi = _make_input_shape(w)
         g = self._get_cache(('rmsnorm', xi, wi), 
                             lambda: RmsNormGraph(self.ctx, xi, wi))
         ffi.memmove(g.x.data, x.data, lib.ggml_nbytes(x))
@@ -277,19 +323,11 @@ class Context:
             val = factory()
             self.cache[key] = val
         return val
-    
-def matmul(ctx: Context, xout: TensorLike, x: TensorLike, w: TensorLike, n: int, d: int):
-    # ctx.matmul(xout, x, w)
 
-    xout, x, w = get_np(xout), get_np(x), get_np(w)
-    # W (d,n) @ x (n,) -> xout (d,)
-    # by far the most amount of time is spent inside this little function
-    for i in range(d):
-        val = 0.0
-        for j in range(n):
-            val += w[i, j] * x[j]
-        xout[i] = val
-
+rms_norm_eps = 1e-5
+rope_freq_base  = 10000.0
+rope_freq_scale = 1.0
+       
 def transformer(ctx: Context, token: int, pos: int, p: Config, s: RunState, w: TransformerWeights):
     dtype = np.float32
 
@@ -315,36 +353,61 @@ def transformer(ctx: Context, token: int, pos: int, p: Config, s: RunState, w: T
 
     # forward all the layers
     for l in range(p.n_layers):
+        
+        # Fused graph for attention rmsnorm & qkv matmuls for this position
+        (q, k, v) = ctx.execute(
+            "rmsnorm",
+            {
+                "x": x,
+                "att_w": w.rms_att_weight[l],
+                "wq": w.wq[l],
+                "wk": w.wk[l],
+                "wv": w.wv[l]
+            }, {
+                "xb": lambda x, att_w:
+                    lib.ggml_mul(ctx.ctx,
+                                 lib.ggml_rms_norm(ctx.ctx, x, rms_norm_eps), att_w),
+            },
+            lambda xb, wq, wk, wv: (
+                lib.ggml_mul_mat(ctx.ctx, xb, wq), # q = xb * wq
+                lib.ggml_mul_mat(ctx.ctx, xb, wk), # k = xb * wk
+                lib.ggml_mul_mat(ctx.ctx, xb, wv), # v = xb * wv
+            ))
+        q_ = numpy(q).reshape((dim,))
+        k_ = numpy(k).reshape((dim,))
+        # v_ = numpy(v)
+        q_heads_ = q_.reshape(p.n_heads, p.head_size)
+        
         # attention rmsnorm
-        ctx.rmsnorm(s.xb, x, w.rms_att_weight[l])
-        # rmsnorm(ctx, s.xb_, x_, w.rms_att_weight_[l], dim)
+        # ctx.rmsnorm(s.xb, x, w.rms_att_weight[l])
+        # # rmsnorm(ctx, s.xb_, x_, w.rms_att_weight_[l], dim)
 
-        # qkv matmuls for this position
-        ctx.matmul(s.q, s.xb, w.wq[l])
-        ctx.matmul(s.k, s.xb, w.wk[l])
-        ctx.matmul(s.v, s.xb, w.wv[l])
+        # # qkv matmuls for this position
+        # ctx.matmul(s.q, s.xb, w.wq[l])
+        # ctx.matmul(s.k, s.xb, w.wk[l])
+        # ctx.matmul(s.v, s.xb, w.wv[l])
 
         # RoPE relative positional encoding: complex-valued rotate q and k by freq_cis in each head
         for i in range(0, dim, 2):
-            q0 = s.q_[i]
-            q1 = s.q_[i+1]
-            k0 = s.k_[i]
-            k1 = s.k_[i+1]
+            q0 = q_[i]
+            q1 = q_[i+1]
+            k0 = k_[i]
+            k1 = k_[i+1]
             fcr = freq_cis_real_row[(i % head_size) // 2]
             fci = freq_cis_imag_row[(i % head_size) // 2]
-            s.q_[i]   = q0 * fcr - q1 * fci
-            s.q_[i+1] = q0 * fci + q1 * fcr
-            s.k_[i]   = k0 * fcr - k1 * fci
-            s.k_[i+1] = k0 * fci + k1 * fcr
+            q_[i]   = q0 * fcr - q1 * fci
+            q_[i+1] = q0 * fci + q1 * fcr
+            k_[i]   = k0 * fcr - k1 * fci
+            k_[i+1] = k0 * fci + k1 * fcr
 
         # save key,value at this time step (pos) to our kv cache
-        copy(s.k, s.key_cache_[l, pos])
-        copy(s.v, s.value_cache_[l, pos])
+        copy(k, s.key_cache_[l, pos])
+        copy(v, s.value_cache_[l, pos])
 
         # multihead attention. iterate over all heads
         for h in range(p.n_heads):
             # get the query vector for this head
-            q = s.q_heads_[h]
+            q = q_heads_[h]
             # attention scores for this head
             att = s.att_[h, :]
             # iterate over all timesteps, including the current one

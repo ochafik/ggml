@@ -167,9 +167,9 @@ def __set_floats(tensor: TensorLike, f32_data: ffi.CData) -> None:
 def __expect_same_layout(name1: str, tensor1: TensorLike, name2: str, tensor2: TensorLike):
     shape1, shape2 = __get_shape(tensor1), __get_shape(tensor2)
     # 
-            # or (len(shape1) == 2 and shape1[0] == 1 and (shape1[1],) == shape2) \
-            # or (len(shape1) == 2 and shape1[1] == 1 and (shape1[0],) == shape2), \
-    assert shape1 == shape2, \
+    assert shape1 == shape2 \
+            or (len(shape1) == 2 and shape1[0] == 1 and (shape1[1],) == shape2) \
+            or (len(shape1) == 2 and shape1[1] == 1 and (shape1[0],) == shape2), \
             f"Shape mismatch: {name1} has {shape1} but {name2} has {shape2}"
     assert __is_contiguous(tensor1) and __is_contiguous(tensor2), f"Only contiguous tensors are supported (got {name1} with strides {__get_strides(tensor1)} and {name2} with strides {__get_strides(tensor2)})"
 
