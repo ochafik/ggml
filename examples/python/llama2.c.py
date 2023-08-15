@@ -246,7 +246,7 @@ def transformer(ctx: Context, token: int, pos: int, p: Config, s: RunState, w: T
     def mul(ctx, a, b):
         return lib.ggml_mul(ctx, a, b)
     
-    def rope(ctx, a, pos):
+    def rope(ctx, a, heads, pos):
         return lib.ggml_reshape_1d(
             ctx,
             # Broadcast rope encoding to all heads
@@ -273,9 +273,9 @@ def transformer(ctx: Context, token: int, pos: int, p: Config, s: RunState, w: T
                 "normout": lambda ctx, x, att_w: rmsnorm(ctx, x, att_w),
             },
             # qkv matmuls for this position and RoPE for q & k
-            lambda ctx, normout, wq, wk, wv: (
-                rope(ctx, mulmat(ctx, normout, wq), pos), # per-head RoPE(q = normout * wq)
-                rope(ctx, mulmat(ctx, normout, wk), pos), # per-head RoPE(k = normout * wk)
+            lambda ctx, normout, wq, wk, wv, pos: (
+                rope(ctx, mulmat(ctx, normout, wq), p.n_heads, pos), # per-head RoPE(q = normout * wq)
+                rope(ctx, mulmat(ctx, normout, wk), p.n_kv_heads, pos), # per-head RoPE(k = normout * wk)
                 mulmat(ctx, normout, wv), # v = normout * wv
             ))
 
