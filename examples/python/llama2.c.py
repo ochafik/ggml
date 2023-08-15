@@ -85,19 +85,8 @@ class TransformerWeights:
 
         # numpy array views of each tensor
         self.token_embedding_table_ = numpy(self.token_embedding_table)
-        # self.rms_att_weight_ = [numpy(w) for w in self.rms_att_weight]
-        # self.rms_ffn_weight_ = [numpy(w) for w in self.rms_ffn_weight]
-        # self.wq_ = [numpy(w) for w in self.wq]
-        # self.wk_ = [numpy(w) for w in self.wk]
-        # self.wv_ = [numpy(w) for w in self.wv]
-        # self.wo_ = [numpy(w) for w in self.wo]
-        # self.w1_ = [numpy(w) for w in self.w1]
-        # self.w2_ = [numpy(w) for w in self.w2]
-        # self.w3_ = [numpy(w) for w in self.w3]
-        # self.rms_final_weight_ = numpy(self.rms_final_weight)
         self.freq_cis_real_ = numpy(self.freq_cis_real)
         self.freq_cis_imag_ = numpy(self.freq_cis_imag)
-        # self.wcls_ = numpy(self.wcls)
 
 # struct used when sorting probabilities during top-p sampling
 @dataclass
@@ -115,16 +104,6 @@ class RunState:
         self.xb = _new_tensor(ctx, (config.dim,), tensor_type)
          # an additional buffer just for convenience (dim,)
         self.xb2 = _new_tensor(ctx, (config.dim,), tensor_type)
-        # # buffer for hidden dimension in the ffn (hidden_dim,)
-        # self.hb = _new_tensor(ctx, (config.hidden_dim,), tensor_type)
-        #  # buffer for hidden dimension in the ffn (hidden_dim,)
-        # self.hb2 = _new_tensor(ctx, (config.hidden_dim,), tensor_type)
-        #  # query
-        # self.q = _new_tensor(ctx, (config.dim,), tensor_type)
-        # # key
-        # self.k = _new_tensor(ctx, (config.dim,), tensor_type)
-        # # value
-        # self.v = _new_tensor(ctx, (config.dim,), tensor_type)
         # buffer for scores/attention values
         self.att = _new_tensor(ctx, (config.n_heads, config.seq_len), tensor_type)
         # kv cache
@@ -136,16 +115,10 @@ class RunState:
         self.xb_ = numpy(self.xb)
         self.xb_heads_ = self.xb_.reshape(config.n_heads, config.head_size)
         self.xb2_ = numpy(self.xb2)
-        # self.hb_ = numpy(self.hb)
-        # self.hb2_ = numpy(self.hb2)
-        # self.q_ = numpy(self.q)
-        # self.k_ = numpy(self.k)
-        # self.v_ = numpy(self.v)
         self.att_ = numpy(self.att)
         self.key_cache_ = numpy(self.key_cache)
         self.value_cache_ = numpy(self.value_cache)
         # Split these by heads for convenience
-        # self.q_heads_ = self.q_.reshape(config.n_heads, config.head_size)
         self.key_cache_heads_ = self.key_cache_.reshape(config.n_layers, config.seq_len, config.n_heads, config.head_size)
         self.value_cache_heads_ = self.value_cache_.reshape(config.n_layers, config.seq_len, config.n_heads, config.head_size)
 
@@ -167,24 +140,6 @@ def get_np(a: TensorLike) -> np.ndarray:
     if isinstance(a, np.ndarray): return a
     return numpy(a)
 
-def accum(ctx, a: TensorLike, b: TensorLike, size: int):
-    a, b = get_np(a), get_np(b)
-    for i in range(size):
-        a[i] += b[i]
-
-def rmsnorm(ctx, o: TensorLike, x: TensorLike, weight: TensorLike, size: int):
-    o, x, weight = get_np(o), get_np(x), get_np(weight)
-    # calculate sum of squares
-    ss = 0.0
-    for j in range(size):
-        ss += x[j] * x[j]
-    ss /= size
-    ss += 1e-5
-    ss = 1.0 / math.sqrt(ss)
-    # normalize and scale
-    for j in range(size):
-        o[j] = weight[j] * (ss * x[j])
-    
 def softmax(x: TensorLike, size: int):
     x = get_np(x)
     # find max value (for numerical stability)
@@ -206,32 +161,6 @@ class MatrixShape:
     type: int
     shape: tuple[int]
     transpose: bool
-
-def _make_input_shape(t, transpose=False):
-    return MatrixShape(t.type, _get_shape(t), transpose)
-          
-class MatMulGraph:
-    def __init__(self, ctx, a: MatrixShape, b: MatrixShape):
-        self.a = _new_tensor(ctx, a.shape, a.type)
-        self.b = _new_tensor(ctx, b.shape, b.type)
-        self.out = lib.ggml_mul_mat(
-            ctx,
-            lib.ggml_transpose(ctx, self.a) if a.transpose else self.a,
-            lib.ggml_transpose(ctx, self.b) if b.transpose else self.b,
-        )
-        self.gf = lib.ggml_new_graph(ctx)
-        lib.ggml_build_forward_expand(self.gf, self.out)
-
-class RmsNormGraph:
-    def __init__(self, ctx, x, w):
-        self.x = _new_tensor(ctx, x.shape, x.type)
-        self.w = _new_tensor(ctx, w.shape, w.type)
-        self.out = lib.ggml_mul(
-            ctx,
-            lib.ggml_rms_norm(ctx, self.x, rms_norm_eps),
-            self.w) # x = x*ffn_norm(broadcasted)
-        self.gf = lib.ggml_new_graph(ctx)
-        lib.ggml_build_forward_expand(self.gf, self.out)
 
 class Context:
     def __init__(self, ctx: ffi.CData, n_threads: int):
@@ -282,38 +211,6 @@ class Context:
         lib.ggml_graph_compute_with_ctx(self.ctx, g, n_threads or self.n_threads)
         return outs
 
-    def matmul(self, out, a, b):
-        # matmul(self.ctx, numpy(out), numpy(a), numpy(b))
-        # return
-        # ane = [a.ne[i] for i in range(a.n_dims)]
-        # bne = [b.ne[i] for i in range(b.n_dims)]
-        ai = _make_input_shape(a)
-        bi = _make_input_shape(b)
-        g = self._get_cache(('matmul', ai, bi), 
-                            lambda: MatMulGraph(self.ctx, ai, bi))
-        ffi.memmove(g.a.data, a.data, lib.ggml_nbytes(a))
-        ffi.memmove(g.b.data, b.data, lib.ggml_nbytes(b))
-        # copy(a, g.a)
-        # copy(b, g.b)
-        lib.ggml_graph_compute_with_ctx(self.ctx, g.gf, self.n_threads)
-        # copy(g.out, out)
-        ffi.memmove(out.data, g.out.data, lib.ggml_nbytes(out))
-
-    def rmsnorm(self, out, x, w):
-        # ane = [a.ne[i] for i in range(a.n_dims)]
-        # bne = [b.ne[i] for i in range(b.n_dims)]
-        xi = _make_input_shape(x)
-        wi = _make_input_shape(w)
-        g = self._get_cache(('rmsnorm', xi, wi), 
-                            lambda: RmsNormGraph(self.ctx, xi, wi))
-        ffi.memmove(g.x.data, x.data, lib.ggml_nbytes(x))
-        ffi.memmove(g.w.data, w.data, lib.ggml_nbytes(w))
-        # copy(x, g.x)
-        # copy(w, g.w)
-        lib.ggml_graph_compute_with_ctx(self.ctx, g.gf, self.n_threads)
-        # copy(g.out, out)
-        ffi.memmove(out.data, g.out.data, lib.ggml_nbytes(out))
-
     def _get_cache(self, key, factory: Callable[[], Any]):
         val = self.cache.get(key)
         if val is None:
@@ -363,6 +260,7 @@ def transformer(ctx: Context, token: int, pos: int, p: Config, s: RunState, w: T
     
     def mul(ctx, a, b):
         return lib.ggml_mul(ctx, a, b)
+
     # forward all the layers
     for l in range(p.n_layers):
         
@@ -592,8 +490,6 @@ def read_vocab(tokenizer_model: Path, config: Config) -> Vocabulary:
         sorted_vocab.sort(key=lambda x: x.str)
 
         return Vocabulary(config.vocab_size, vocab, vocab_scores, max_token_length, sorted_vocab)
-        # print('FINISHED READING Vocabulary')
-
 
 # ----------------------------------------------------------------------------
 # sampling can be done in a few ways: greedy argmax, sampling, top-p sampling
@@ -654,8 +550,8 @@ def run(
         tokenizer_model: Path,
         prompt: Optional[str] = None,
         steps: int = 256,
-        temperature: float = 0.0,
-        # temperature: float = 1.0,
+        # temperature: float = 0.0,
+        temperature: float = 1.0,
         seed: Optional[int] = None,
         n_threads: int = 8,
         topp: float = 0.9): # top-p in nucleus sampling
