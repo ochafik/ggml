@@ -127,8 +127,6 @@ class RunState:
         # self.v = _new_tensor(ctx, (config.dim,), tensor_type)
         # buffer for scores/attention values
         self.att = _new_tensor(ctx, (config.n_heads, config.seq_len), tensor_type)
-        # output logits
-        self.logits = _new_tensor(ctx, (1, config.vocab_size), tensor_type)
         # kv cache
         self.key_cache = _new_tensor(ctx, (config.n_layers, config.seq_len, config.dim), tensor_type)
         self.value_cache = _new_tensor(ctx, (config.n_layers, config.seq_len, config.dim), tensor_type)
@@ -144,7 +142,6 @@ class RunState:
         # self.k_ = numpy(self.k)
         # self.v_ = numpy(self.v)
         self.att_ = numpy(self.att)
-        self.logits_ = numpy(self.logits).transpose()
         self.key_cache_ = numpy(self.key_cache)
         self.value_cache_ = numpy(self.value_cache)
         # Split these by heads for convenience
@@ -485,13 +482,21 @@ def transformer(ctx: Context, token: int, pos: int, p: Config, s: RunState, w: T
                             mulmat(ctx, normout, w3)),
                         w2)))
 
-    # final rmsnorm
-    ctx.rmsnorm(x, x, w.rms_final_weight)
-    # rmsnorm(ctx, x_, x_, w.rms_final_weight_, dim)
-
-    # classifier into logits
-    ctx.matmul(s.logits, x, w.wcls)
-
+    return ctx.execute(
+        "final rms + logits",
+        {   
+            "x": x,
+            "final_w": w.rms_final_weight,
+            "wcls": w.wcls,
+        },
+        {},
+        lambda ctx, final_w, wcls:
+            # classifier into logits
+            mulmat(
+                ctx,
+                # final rmsnorm
+                rmsnorm(ctx, x, final_w),
+                w.wcls))
 
 def lookup_token(str: str, v: Vocabulary):
     left, right = 0, v.vocab_size - 1
@@ -699,7 +704,8 @@ def run(
     while (pos < steps):
 
         # forward the transformer to get logits for the next token
-        transformer(context, token, pos, config, state, weights)
+        logits = transformer(context, token, pos, config, state, weights)
+        logits_ = numpy(logits).transpose()
 
         # advance the state state machine
         if(pos < (len(prompt_tokens) if prompt_tokens else 0)):
@@ -709,19 +715,19 @@ def run(
             # sample the next token
             if (temperature == 0.0):
                 # greedy argmax sampling: take the token with the highest probability
-                next = argmax(state.logits_)
+                next = argmax(logits_)
             else:
                 # apply the temperature to the logits
-                for q in range(config.vocab_size): state.logits_[q] /= temperature
+                for q in range(config.vocab_size): logits_[q] /= temperature
                 # apply softmax to the logits to get the probabilities for next token
-                softmax(state.logits_, config.vocab_size)
+                softmax(logits_, config.vocab_size)
                 # we sample from this distribution to get the next token
                 if (topp <= 0):
                     # simply sample from the predicted probability distribution
-                    next = sample(state.logits_, config.vocab_size)
+                    next = sample(logits_, config.vocab_size)
                 else:
                     # top-p (nucleus) sampling, clamping the least likely tokens to zero
-                    next = sample_topp(state.logits_, config.vocab_size, topp)
+                    next = sample_topp(logits_, config.vocab_size, topp)
 
         pos += 1
 
