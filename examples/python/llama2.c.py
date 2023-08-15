@@ -19,6 +19,7 @@ from jsonargparse import CLI
 from pathlib import Path
 import struct, os, mmap, math, sys, time, inspect
 from collections import namedtuple
+import scipy as sp
 
 Tensor = ffi.CData
 Context = ffi.CData
@@ -140,22 +141,6 @@ def get_np(a: TensorLike) -> np.ndarray:
     if isinstance(a, np.ndarray): return a
     return numpy(a)
 
-def softmax(x: TensorLike, size: int):
-    x = get_np(x)
-    # find max value (for numerical stability)
-    max_val = x[0]
-    for i in range(1, size):
-        if x[i] > max_val:
-            max_val = x[i]
-    # exp and sum
-    sum = 0.0
-    for i in range(size):
-        x[i] = math.exp(x[i] - max_val)
-        sum += x[i]
-    # normalize
-    for i in range(size):
-        x[i] /= sum
-
 @dataclass(frozen=True)
 class MatrixShape:
     type: int
@@ -229,7 +214,6 @@ def transformer(ctx: Context, token: int, pos: int, p: Config, s: RunState, w: T
     x = s.x
     x_ = s.x_
     dim = p.dim
-    hidden_dim =  p.hidden_dim
     head_size = dim // p.n_heads
     assert dim % p.n_heads == 0
 
@@ -237,7 +221,6 @@ def transformer(ctx: Context, token: int, pos: int, p: Config, s: RunState, w: T
     content_row_ = w.token_embedding_table_[token, :]
     assert content_row_.shape == (dim,)
     np.copyto(x_, content_row_)
-    # copy(content_row_, x_)
 
     # pluck out the "pos" row of freq_cis_real and freq_cis_imag
     freq_cis_real_row = w.freq_cis_real_[pos]
@@ -324,7 +307,7 @@ def transformer(ctx: Context, token: int, pos: int, p: Config, s: RunState, w: T
                 att[t] = score
 
             # softmax the scores to get attention weights, from 0..pos inclusively
-            softmax(att, pos + 1)
+            att[0:pos+1] = sp.special.softmax(att[0:pos+1])
 
             # weighted sum of the values, store back into xb
             copy(zero_head, s.xb_heads_[h])
@@ -344,11 +327,7 @@ def transformer(ctx: Context, token: int, pos: int, p: Config, s: RunState, w: T
                 "x": x,
                 "xb": s.xb,
                 "ffn_w": w.rms_ffn_weight[l],
-                "w1": w.w1[l],
-                "w2": w.w2[l],
-                "w3": w.w3[l],
-                "wo": w.wo[l],
-            },
+                "w1": w.w1[l], "w2": w.w2[l], "w3": w.w3[l], "wo": w.wo[l] },
             {
                 "xx": lambda ctx, x, xb, wo:
                     # residual connection back into x
@@ -360,10 +339,7 @@ def transformer(ctx: Context, token: int, pos: int, p: Config, s: RunState, w: T
                     ),
                 "normout": lambda ctx, xx, ffn_w:
                     # ffn rmsnorm
-                    rmsnorm(
-                        ctx,
-                        xx,
-                        ffn_w)
+                    rmsnorm(ctx, xx, ffn_w)
             },
             lambda ctx, normout, xx, w1, w2, w3:
                 # residual connection
@@ -371,12 +347,10 @@ def transformer(ctx: Context, token: int, pos: int, p: Config, s: RunState, w: T
                     # final matmul by w2 to get the output of the ffn
                     mulmat(
                         ctx,
-                        # silu(w1(x)) elementwise multiplied w3(x)
+                        # silu(w1(x)) x w3(x)
                         mul(
                             ctx,
-                            # silu(w1(x))
                             lib.ggml_silu(ctx, mulmat(ctx, normout, w1)),
-                            # w3(x)
                             mulmat(ctx, normout, w3)),
                         w2)))
 
@@ -390,8 +364,7 @@ def transformer(ctx: Context, token: int, pos: int, p: Config, s: RunState, w: T
         {},
         lambda ctx, final_w, wcls:
             # classifier into logits
-            mulmat(
-                ctx,
+            mulmat(ctx,
                 # final rmsnorm
                 rmsnorm(ctx, x, final_w),
                 w.wcls))
@@ -494,18 +467,6 @@ def read_vocab(tokenizer_model: Path, config: Config) -> Vocabulary:
 # ----------------------------------------------------------------------------
 # sampling can be done in a few ways: greedy argmax, sampling, top-p sampling
 
-def argmax(probabilities: TensorLike) -> int:
-    probabilities = get_np(probabilities)
-    (n, _) = probabilities.shape
-    # return the index that has the highest probability
-    max_i = 0
-    max_p = probabilities[0]
-    for i in range(1, n):
-        if probabilities[i] > max_p:
-            max_i = i
-            max_p = probabilities[i]
-    return max_i
-
 def sample(probabilities: TensorLike) -> int:
     probabilities = get_np(probabilities)
     (n,) = probabilities.shape
@@ -549,7 +510,7 @@ def run(
         model: Path,
         tokenizer_model: Path,
         prompt: Optional[str] = None,
-        steps: int = 256,
+        steps: int = 128,
         # temperature: float = 0.0,
         temperature: float = 1.0,
         seed: Optional[int] = None,
@@ -595,13 +556,11 @@ def run(
     next = None # will store the next token in the sequence
     token = 1   # init with token 1 (=BOS), as done in Llama-2 sentencepiece tokenizer
     pos = 0     # position in the sequence
-
     
     while (pos < steps):
 
         # forward the transformer to get logits for the next token
-        logits = transformer(context, token, pos, config, state, weights)
-        logits_ = numpy(logits).transpose()
+        logits = numpy(transformer(context, token, pos, config, state, weights)).transpose()
 
         # advance the state state machine
         if(pos < (len(prompt_tokens) if prompt_tokens else 0)):
@@ -611,19 +570,19 @@ def run(
             # sample the next token
             if (temperature == 0.0):
                 # greedy argmax sampling: take the token with the highest probability
-                next = argmax(logits_)
+                next = np.argmax(logits)
             else:
                 # apply the temperature to the logits
-                for q in range(config.vocab_size): logits_[q] /= temperature
+                for q in range(config.vocab_size): logits[q] /= temperature
                 # apply softmax to the logits to get the probabilities for next token
-                softmax(logits_, config.vocab_size)
+                logits = sp.special.softmax(logits)
                 # we sample from this distribution to get the next token
                 if (topp <= 0):
                     # simply sample from the predicted probability distribution
-                    next = sample(logits_, config.vocab_size)
+                    next = sample(logits, config.vocab_size)
                 else:
                     # top-p (nucleus) sampling, clamping the least likely tokens to zero
-                    next = sample_topp(logits_, config.vocab_size, topp)
+                    next = sample_topp(logits, config.vocab_size, topp)
 
         pos += 1
 
