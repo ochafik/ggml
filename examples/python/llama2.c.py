@@ -111,6 +111,8 @@ class RunState:
         self.key_cache = _new_tensor(ctx, (config.n_layers, config.seq_len, config.dim), tensor_type)
         self.value_cache = _new_tensor(ctx, (config.n_layers, config.seq_len, config.dim), tensor_type)
 
+        self.probindex = [ProbIndex(-1.0, -1) for i in range(config.vocab_size)]
+
         # numpy array views of each tensor
         self.x_ = numpy(self.x)
         self.xb_ = numpy(self.xb)
@@ -556,9 +558,9 @@ def read_vocab(tokenizer_model: Path, config: Config) -> Vocabulary:
 # ----------------------------------------------------------------------------
 # sampling can be done in a few ways: greedy argmax, sampling, top-p sampling
 
-def sample(probabilities: TensorLike) -> int:
-    probabilities = get_np(probabilities)
-    (n,) = probabilities.shape
+def sample(probabilities: TensorLike, n) -> int:
+    # probabilities = get_np(probabilities)
+    assert probabilities.shape == (n, 1)
     # sample index from probabilities (they must sum to 1!)
     r = np.random.rand()
     cdf = 0.0
@@ -568,13 +570,16 @@ def sample(probabilities: TensorLike) -> int:
             return i
     return n - 1 # in case of rounding errors
 
-def sample_topp(probabilities: TensorLike, n: int, topp: float) -> int:
+def sample_topp(probabilities: TensorLike, n: int, topp: float, probindex: list[ProbIndex]) -> int:
     # top-p sampling (or "nucleus sampling") samples from the smallest set of
     # tokens that exceed probability topp. This way we never sample tokens that
     # have very low probabilities and are less likely to go "off the rails".
 
     # quicksort indices in descending order of probabilities
-    probindex = [ProbIndex(probabilities[i], i) for i in range(n)]
+    for i in range(n):
+        probindex[i].prob = probabilities[i]
+        probindex[i].index = i
+    # probindex = [ProbIndex(probabilities[i], i) for i in range(n)]
     probindex.sort(key=lambda x: x.prob, reverse=True)
 
     # truncate the list where cumulative probability exceeds topp
@@ -688,11 +693,11 @@ def llama_eval(p: Config, s: RunState, w: TransformerWeights, tokens: Optional[l
     #     # return result for just the last token
     #     logits_out.resize(n_vocab)
     #     memcpy(logits_out.data(), (float *) ggml_get_data(res) + (n_vocab*(N-1)), sizeof(float)*n_vocab)
-    info("res", res)
+    # info("res", res)
     logits = numpy(res)[-p.vocab_size*(N-1):]
 
     # extract embeddings
-    info("embeddings", embeddings)
+    # info("embeddings", embeddings)
     embeddings = numpy(embeddings)[-p.dim*(N-1):]
 
     return (logits, embeddings)
@@ -798,7 +803,7 @@ def run(
                     next = sample(logits, config.vocab_size)
                 else:
                     # top-p (nucleus) sampling, clamping the least likely tokens to zero
-                    next = sample_topp(logits, config.vocab_size, topp)
+                    next = sample_topp(logits, config.vocab_size, topp, state.probindex)
 
         pos += 1
 
