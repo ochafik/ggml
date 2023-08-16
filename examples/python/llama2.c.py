@@ -289,8 +289,8 @@ def llama_build_graph(p: Config, s: RunState, w: TransformerWeights, tokens: Opt
 
     content_row_ = w.token_embedding_table_[tokens[-1], :]
     assert content_row_.shape == (p.dim,)
-    inpL = lib.ggml_new_tensor_1d(ctx0, lib.GGML_TYPE_F32, p.dim)
-    copy(content_row_, inpL)
+    inpL = lib.ggml_new_tensor_2d(ctx0, lib.GGML_TYPE_F32, p.dim, N)
+    copy(content_row_.reshape((p.dim, N)), inpL)
 
     # if tokens:
     #     inp_tokens = lib.ggml_new_tensor_1d(ctx0, lib.GGML_TYPE_I32, N)
@@ -350,12 +350,9 @@ def llama_build_graph(p: Config, s: RunState, w: TransformerWeights, tokens: Opt
         lib.ggml_build_forward_expand(gf, lib.ggml_cpy(ctx0, Kcur, k))
         lib.ggml_build_forward_expand(gf, lib.ggml_cpy(ctx0, Vcur, v))
 
-        Q = lib.ggml_permute(ctx0,
-                    Qcur,
-                    0, 2, 1, 3)
+        Q = lib.ggml_permute(ctx0, Qcur, 0, 2, 1, 3)
 
-        K = lib.ggml_permute(ctx0,
-                    lib.ggml_reshape_3d(ctx0,
+        K = lib.ggml_permute(ctx0, lib.ggml_reshape_3d(ctx0,
                         lib.ggml_view_1d(ctx0, s.key_cache, (n_past + N)*n_embd_gqa, il*n_ctx*lib.ggml_element_size(s.key_cache)*n_embd_gqa),
                         n_embd_head, n_head_kv, n_past + N),
                     0, 2, 1, 3)
@@ -380,8 +377,7 @@ def llama_build_graph(p: Config, s: RunState, w: TransformerWeights, tokens: Opt
                     n_ctx*lib.ggml_element_size(s.value_cache)*n_embd_head,
                     n_ctx*lib.ggml_element_size(s.value_cache)*n_embd_gqa*il)
 
-        # if True:
-        if False:
+        if True:
             KQV = lib.ggml_mul_mat(ctx0, V, KQ_soft_max)
         else:
             #  make V contiguous in memory to speed up the matmul, however we waste time on the copy
@@ -399,9 +395,7 @@ def llama_build_graph(p: Config, s: RunState, w: TransformerWeights, tokens: Opt
                 lib.ggml_new_tensor_2d(ctx0, lib.GGML_TYPE_F32, n_embd, N))
 
         #  projection (no bias)
-        cur = lib.ggml_mul_mat(ctx0,
-                w.wo[il],
-                cur)
+        cur = lib.ggml_mul_mat(ctx0, w.wo[il], cur)
 
         # use_buf(ctx0, 1)
 
@@ -415,22 +409,16 @@ def llama_build_graph(p: Config, s: RunState, w: TransformerWeights, tokens: Opt
         #  cur = cur*ffn_norm(broadcasted)
         cur = lib.ggml_mul(ctx0, cur, w.rms_ffn_weight[il])
 
-        tmp = lib.ggml_mul_mat(ctx0,
-                w.w3[il],
-                cur)
+        tmp = lib.ggml_mul_mat(ctx0, w.w3[il], cur)
 
-        cur = lib.ggml_mul_mat(ctx0,
-                w.w1[il],
-                cur)
+        cur = lib.ggml_mul_mat(ctx0, w.w1[il], cur)
 
         #  SILU activation
         cur = lib.ggml_silu(ctx0, cur)
 
         cur = lib.ggml_mul(ctx0, cur, tmp)
 
-        cur = lib.ggml_mul_mat(ctx0,
-                w.w2[il],
-                cur)
+        cur = lib.ggml_mul_mat(ctx0, w.w2[il], cur)
 
         cur = lib.ggml_add(ctx0, cur, inpFF)
 
@@ -714,7 +702,7 @@ def run(
         temperature: float = 0.0,
         # temperature: float = 1.0,
         seed: Optional[int] = None,
-        auto_stop = False,
+        auto_stop = True,
         n_threads: int = 8,
         topp: float = 0.9): # top-p in nucleus sampling
 
@@ -755,13 +743,11 @@ def run(
     # start the main loop
     start = 0   # used to time our code, only initialized after first iteration
     next = None # will store the next token in the sequence
-    token = 1   # init with token 1 (=BOS), as done in Llama-2 sentencepiece tokenizer
     pos = 0     # position in the sequence
     
-    # tokens = [*prompt_tokens] if prompt_tokens else [1]
-    # embd = None
-
-    embd = prompt_tokens if prompt_tokens else [1]
+    # init with BOS, as done in Llama-2 sentencepiece tokenizer
+    token = llama_token_bos()
+    # embd = [llama_token_bos()] + (prompt_tokens or [])# if prompt_tokens else [1]
 
     # n_batch = 1
     # n_past = 0
@@ -777,7 +763,7 @@ def run(
 
     while (pos < steps):
 
-        (logits, embeddings) = llama_eval(config, state, weights, embd, None, n_tokens=1, n_past=pos, n_threads=n_threads)
+        (logits, embeddings) = llama_eval(config, state, weights, [token], None, n_tokens=1, n_past=pos, n_threads=n_threads)
         
         # logits = numpy(transformer(context, token, pos, config, state, weights)).transpose()
 
@@ -815,15 +801,16 @@ def run(
                 break
 
         # following BOS (1) token, sentencepiece decoder strips any leading whitespace (see PR #89)
-        if embd[-1] == 1 and vocab.vocab[next][0] == ' ':
+        if token == 1 and vocab.vocab[next][0] == ' ':
+        # if embd[-1] == 1 and vocab.vocab[next][0] == ' ':
             token_str = vocab.vocab[next][1:]
         else:
             token_str = vocab.vocab[next]
         sys.stdout.write(token_str)
         sys.stdout.flush()
 
-        embd.append(next)
-        # token = next
+        # embd.append(next)
+        token = next
 
         # init the timer here because the first iteration can be slower
         if start == 0: start = time.time()
