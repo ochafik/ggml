@@ -17,9 +17,18 @@ from dataclasses import dataclass
 from typing import List, Tuple, Optional, Union, Dict, Any, Callable, TypeVar, Generic
 from jsonargparse import CLI
 from pathlib import Path
-import struct, os, mmap, math, sys, time, inspect
+import struct, os, mmap, math, sys, time, inspect, signal, re
 from collections import namedtuple
 import scipy as sp
+
+GGML_USE_MPI=False
+LLAMA_USE_ALLOCATOR=False
+GGML_USE_METAL = os.environ.get('GGML_USE_METAL', '0') == '1'
+
+# Define lib.* symbols in the global namespace:
+for name in dir(lib):
+    if re.search(r'_(cl|mpi|cuda|cublas)(_|$)', name): continue
+    globals()[name] = getattr(lib, name)
 
 Tensor = ffi.CData
 Context = ffi.CData
@@ -139,73 +148,6 @@ class Vocabulary:
     # Sorted vocabulary tokens and their corresponding id for log(vocab_size) lookups.
     sorted_vocab: list[TokenIndex]
 
-def get_np(a: TensorLike) -> np.ndarray:
-    if isinstance(a, np.ndarray): return a
-    return numpy(a)
-
-@dataclass(frozen=True)
-class MatrixShape:
-    type: int
-    shape: tuple[int]
-    transpose: bool
-
-class Context:
-    def __init__(self, ctx: ffi.CData, n_threads: int):
-        self.ctx = ctx
-        # self.ctx_metal = lib.ggml_metal_init(1)
-        # ggml_metal_add_buffer(ctx->ctx_metal, "data", data_ptr, data_size, max_size)
-        self.cache = {}
-        self.n_threads = n_threads
-
-    def _create_graph(self, input_shapes, intermediates, out):
-        vars = {
-            name: _new_tensor(self.ctx, input.shape, input.type)
-            for name, input in input_shapes.items()
-        }
-        
-        def invoke(f):
-            argnames = inspect.getfullargspec(f).args
-            args = [self.ctx if n == 'ctx' else vars[n] for n in argnames]
-            return f(*args)
-        
-        for name, f in intermediates.items():
-            vars[name] = invoke(f)
-
-        outputs = invoke(out)
-
-        gf = lib.ggml_new_graph(self.ctx)
-        for output in (outputs if isinstance(outputs, tuple) else [outputs]):
-            lib.ggml_build_forward_expand(gf, output)
-
-        return (
-            gf,
-            vars,
-            outputs,
-        )
-
-    def execute(self, name, inputs, intermediates, out, n_threads=None, cache=True):
-        input_shapes = {
-            name: MatrixShape(input.type, _get_shape(input), transpose=False)
-            for name, input in inputs.items()
-        }
-        def make_graph():
-            return self._create_graph(input_shapes, intermediates, out)
-        (g, vars, outs) = self._get_cache((name, tuple(input_shapes)), make_graph) \
-            if cache else make_graph()
-
-        for name, input in inputs.items():
-            ffi.memmove(vars[name].data, input.data, lib.ggml_nbytes(input))
-
-        lib.ggml_graph_compute_with_ctx(self.ctx, g, n_threads or self.n_threads)
-        return outs
-
-    def _get_cache(self, key, factory: Callable[[], Any]):
-        val = self.cache.get(key)
-        if val is None:
-            val = factory()
-            self.cache[key] = val
-        return val
-
 rms_norm_eps = 1e-5
 rope_freq_base  = 10000.0
 rope_freq_scale = 1.0
@@ -240,20 +182,10 @@ def use_buf(ctx, i: int):
     # #endif
 
 def llama_build_graph(p: Config, s: RunState, w: TransformerWeights, tokens: Optional[list[int]], embd: Optional[np.ndarray], n_tokens: int, n_past: int):
-    
-# def llama_build_graph(lctx, tokens: Optional[list[int]], embd: Optional[np.ndarray], n_tokens: int, n_past: int):
     assert ((not tokens and embd) or (tokens and not embd))
 
     N = n_tokens
-
-    # model   = lctx.model
-    # hparams = model.hparams
-
-    # kv_self = lctx.kv_self
-
-    # N = 1 # n_tokens
     n_gqa = p.n_heads // p.n_kv_heads
-    # n_past = pos
     n_embd = p.dim
     n_embd_gqa = p.dim // n_gqa
     n_embd_head = p.head_size
@@ -262,20 +194,6 @@ def llama_build_graph(p: Config, s: RunState, w: TransformerWeights, tokens: Opt
     n_head = p.n_heads
     n_head_kv = p.n_kv_heads
     
-    # print(f"N = n_tokens: {n_tokens}")
-    # print(f"n_past: {n_past}")
-    # print(f"n_embd: {n_embd}")
-    # print(f"n_layer: {n_layer}")
-    # print(f"n_ctx: {n_ctx}")
-    # print(f"n_head: {n_head}")
-    # print(f"n_head_kv: {n_head_kv}")
-    # print(f"n_embd_head: {n_embd_head}")
-    # print(f"n_embd_gqa: {n_embd_gqa}")
-
-    # freq_base  = rope_freq_base
-    # freq_scale = rope_freq_scale
-
-
     params = ffi.new('struct ggml_init_params*')
     params.mem_size = 102*1024*1024
     params.mem_buffer = ffi.NULL
@@ -321,7 +239,9 @@ def llama_build_graph(p: Config, s: RunState, w: TransformerWeights, tokens: Opt
         #  cur = cur*attention_norm(broadcasted)
         cur = lib.ggml_mul(ctx0, cur, w.rms_att_weight[il])
 
+        #
         #  self-attention
+        #
         
         #  compute Q and K and RoPE them
         tmpk = lib.ggml_mul_mat(ctx0, w.wk[il], cur)
@@ -332,7 +252,9 @@ def llama_build_graph(p: Config, s: RunState, w: TransformerWeights, tokens: Opt
 
         Qcur = lib.ggml_rope_custom_inplace(ctx0, lib.ggml_reshape_3d(ctx0, tmpq, n_embd_head, n_head, N),    n_past, n_embd_head, 0, 0, rope_freq_base, rope_freq_scale)
 
+        #
         #  store key and value to memory
+        #
         
         #  compute the transposed [N, n_embd] V matrix
 
@@ -401,7 +323,9 @@ def llama_build_graph(p: Config, s: RunState, w: TransformerWeights, tokens: Opt
 
         inpFF = lib.ggml_add(ctx0, cur, inpSA)
 
+        #
         #  feed-forward network
+        #
         
         #  norm
         cur = lib.ggml_rms_norm(ctx0, inpFF, rms_norm_eps)
@@ -428,7 +352,6 @@ def llama_build_graph(p: Config, s: RunState, w: TransformerWeights, tokens: Opt
     # use_buf(ctx0, 0)
 
     #  norm
-    
     cur = lib.ggml_rms_norm(ctx0, inpL, rms_norm_eps)
 
     #  cur = cur*norm(broadcasted)
@@ -444,9 +367,15 @@ def llama_build_graph(p: Config, s: RunState, w: TransformerWeights, tokens: Opt
 
     lib.ggml_build_forward_expand(gf, cur)
 
+    res = gf.nodes[gf.n_nodes - 1]
+    assert _get_shape(res) == (p.vocab_size, N)
+    
+    embeddings = gf.nodes[gf.n_nodes - 2]
+    assert _get_shape(embeddings) == (p.dim, N)
+
     lib.ggml_free(ctx0)
 
-    return gf
+    return (gf, res, embeddings)
 
 def lookup_token(str: str, v: Vocabulary):
     left, right = 0, v.vocab_size - 1
@@ -588,10 +517,6 @@ def sample_topp(probabilities: TensorLike, n: int, topp: float, probindex: list[
             return probindex[i].index
     return probindex[last_idx].index # in case of rounding errors
 
-GGML_USE_MPI=False
-LLAMA_USE_ALLOCATOR=False
-GGML_USE_METAL=False
-
 # evaluate the transformer
 #
 #   - lctx:      llama context
@@ -609,7 +534,7 @@ def llama_eval(p: Config, s: RunState, w: TransformerWeights, tokens: Optional[l
     # if LLAMA_USE_ALLOCATOR:
     #     ggml_allocr_reset(lctx.alloc)
 
-    gf = llama_build_graph(p, s, w, tokens, embd, n_tokens, n_past)
+    (gf, res, embeddings) = llama_build_graph(p, s, w, tokens, embd, n_tokens, n_past)
 
     # if LLAMA_USE_ALLOCATOR:
     #     ggml_allocr_alloc_graph(lctx.alloc, gf)
@@ -620,12 +545,7 @@ def llama_eval(p: Config, s: RunState, w: TransformerWeights, tokens: Optional[l
     # otherwise, the threads are spin-lock waiting for the BLAS calls and are degrading the performance
     n_threads = 1 if N >= 32 and lib.ggml_cpu_has_blas() and not lib.ggml_cpu_has_gpublas() else n_threads
 
-    res = gf.nodes[gf.n_nodes - 1]
-    embeddings = gf.nodes[gf.n_nodes - 2]
-
-    # LLAMA_ASSERT(strcmp(res->name, "result_output") == 0)
-    # LLAMA_ASSERT(strcmp(embeddings->name, "result_norm") == 0)
-
+    
     # if GGML_USE_MPI:
     #     lib.ggml_mpi_graph_compute_pre(lctx.ctx_mpi, gf, n_layer)
 
@@ -635,12 +555,13 @@ def llama_eval(p: Config, s: RunState, w: TransformerWeights, tokens: Optional[l
             #if (!lib.ggml_metal_if_optimized(lctx.ctx_metal)) {
             #    lib.ggml_metal_graph_find_concurrency(lctx.ctx_metal, gf)
             #}
-            lib.ggml_metal_set_n_cb     (lctx.ctx_metal, n_threads)
-            lib.ggml_metal_graph_compute(lctx.ctx_metal, gf)
-            lib.ggml_metal_get_tensor   (lctx.ctx_metal, res)
-            if not lctx.embedding.empty():
-                lib.ggml_metal_get_tensor(lctx.ctx_metal, embeddings)
+            lib.ggml_metal_set_n_cb     (s.ctx_metal, n_threads)
+            lib.ggml_metal_graph_compute(s.ctx_metal, gf)
+            lib.ggml_metal_get_tensor   (s.ctx_metal, res)
+            # if not lctx.embedding.empty():
+            lib.ggml_metal_get_tensor(s.ctx_metal, embeddings)
         else:
+            assert False
             # IMPORTANT:
             # Since we don't have efficient Matrix x Matrix Metal multiplication yet, we fallback to vanilla
             # ggml_graph_compute(). It uses Apple's Accelerate CBLAS API which takes advantage of the ANE or the AMX
@@ -651,12 +572,12 @@ def llama_eval(p: Config, s: RunState, w: TransformerWeights, tokens: Optional[l
             #
             # TODO: avoid these syncs via shared memory (ref #1696)
             #
-            if (lctx.ctx_metal):
+            if sctx_metal:
                 # We need to sync the GPU KV cache with the CPU KV cache
-                lib.ggml_metal_get_tensor(lctx.ctx_metal, kv_self.k)
-                lib.ggml_metal_get_tensor(lctx.ctx_metal, kv_self.v)
+                lib.ggml_metal_get_tensor(s.ctx_metal, kv_self.k)
+                lib.ggml_metal_get_tensor(s.ctx_metal, kv_self.v)
 
-            lib.ggml_graph_compute_helper(lctx.work_buffer, gf, n_threads)
+            lib.ggml_graph_compute_helper(s.work_buffer, gf, n_threads)
     else:
         # lib.ggml_graph_compute_helper(lctx.work_buffer, gf, n_threads)
         plan = lib.ggml_graph_plan(gf, n_threads)
