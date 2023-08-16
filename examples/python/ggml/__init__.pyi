@@ -1,3 +1,4 @@
+# auto-generated file
 import ggml.ffi as ffi
 import numpy as np
 class lib:
@@ -686,6 +687,16 @@ class lib:
                 struct ggml_context * ctx,
                 struct ggml_tensor  * a,
                 int                   n_past);
+    """
+    ...
+  def ggml_diag_mask_inf_dyn(ctx: ffi.CData, a: ffi.CData, n_past: ffi.CData) -> ffi.CData:
+    """
+    takes n_past as an int scalar tensor
+
+        GGML_API struct ggml_tensor * ggml_diag_mask_inf_dyn(
+                struct ggml_context * ctx,
+                struct ggml_tensor  * a,
+                struct ggml_tensor  * n_past);
     """
     ...
   def ggml_diag_mask_inf_inplace(ctx: ffi.CData, a: ffi.CData, n_past: int) -> ffi.CData:
@@ -1729,6 +1740,21 @@ class lib:
                 struct ggml_context * ctx,
                 struct ggml_tensor  * a,
                 int                   n_past,
+                int                   n_dims,
+                int                   mode,
+                int                   n_ctx,
+                float                 freq_base,
+                float                 freq_scale);
+    """
+    ...
+  def ggml_rope_custom_inplace_dyn(ctx: ffi.CData, a: ffi.CData, n_past: ffi.CData, n_dims: int, mode: int, n_ctx: int, freq_base: float, freq_scale: float) -> ffi.CData:
+    """
+    in-place, returns view(a)
+
+        GGML_API struct ggml_tensor * ggml_rope_custom_inplace_dyn(
+                struct ggml_context * ctx,
+                struct ggml_tensor  * a,
+                struct ggml_tensor  * n_past, // an i32 scalar tensor
                 int                   n_dims,
                 int                   mode,
                 int                   n_ctx,

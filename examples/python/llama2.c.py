@@ -219,14 +219,12 @@ def transformer(ctx: Context, token: int, pos: int, p: Config, s: RunState, w: T
     head_size_sqrt = math.sqrt(head_size)
     assert dim % p.n_heads == 0
 
+    pos_tensor = lib.ggml_new_i32(ctx.ctx, pos + 10)
+
     # copy the token embedding into x
     content_row_ = w.token_embedding_table_[token, :]
     assert content_row_.shape == (dim,)
     np.copyto(x_, content_row_)
-
-    # pluck out the "pos" row of freq_cis_real and freq_cis_imag
-    freq_cis_real_row = w.freq_cis_real_[pos]
-    freq_cis_imag_row = w.freq_cis_imag_[pos]
 
     zero_xb = np.zeros(dim, dtype)
 
@@ -250,9 +248,9 @@ def transformer(ctx: Context, token: int, pos: int, p: Config, s: RunState, w: T
         return lib.ggml_reshape_1d(
             ctx,
             # Broadcast rope encoding to all heads
-            lib.ggml_rope_custom_inplace(
+            lib.ggml_rope_custom_inplace_dyn(
                 ctx,
-                lib.ggml_reshape_2d(ctx, a, p.head_size, p.n_kv_heads),
+                lib.ggml_reshape_2d(ctx, a, p.head_size, heads),
                 pos, p.head_size, 0, 0, rope_freq_base, rope_freq_scale),
             p.dim)
 
@@ -267,7 +265,8 @@ def transformer(ctx: Context, token: int, pos: int, p: Config, s: RunState, w: T
                 "att_w": w.rms_att_weight[l],
                 "wq": w.wq[l],
                 "wk": w.wk[l],
-                "wv": w.wv[l]
+                "wv": w.wv[l],
+                "pos": pos_tensor
             }, {
                 # attention rmsnorm
                 "normout": lambda ctx, x, att_w: rmsnorm(ctx, x, att_w),
@@ -277,7 +276,7 @@ def transformer(ctx: Context, token: int, pos: int, p: Config, s: RunState, w: T
                 rope(ctx, mulmat(ctx, normout, wq), p.n_heads, pos), # per-head RoPE(q = normout * wq)
                 rope(ctx, mulmat(ctx, normout, wk), p.n_kv_heads, pos), # per-head RoPE(k = normout * wk)
                 mulmat(ctx, normout, wv), # v = normout * wv
-            ))
+            ))#, cache=False)
 
         # save key,value at this time step (pos) to our kv cache
         copy(k, s.key_cache_[l, pos])
@@ -524,7 +523,7 @@ def run(
 
     print(config)
 
-    ctx = init(mem_size=1024*1024*1024)
+    ctx = init(mem_size=1*1024*1024*1024)
     context = Context(ctx, n_threads)
 
     # type = lib.GGML_TYPE_Q5_K
