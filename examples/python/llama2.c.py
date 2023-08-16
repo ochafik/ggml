@@ -639,7 +639,6 @@ def run(
     print(config)
 
     ctx = init(mem_size=100*1024*1024*1024)
-    context = Context(ctx, n_threads)
 
     # type = lib.GGML_TYPE_Q5_K
     tensor_type = lib.GGML_TYPE_F32
