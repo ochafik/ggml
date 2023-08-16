@@ -2,16 +2,16 @@
 # https://github.com/karpathy/llama2.c/blob/master/run.c
 # Use faster tokenization, and naively allocate buffers in GGML / wrap them to numpy
 
-# cmake ../../../llama.cpp -B /tmp/llama_release -DLLAMA_METAL=1 -DBUILD_SHARED_LIBS=1 -DLLAMA_BUILD_EXAMPLES=0 -DLLAMA_BUILD_TESTS=0 -DCMAKE_BUILD_TYPE=Release && ( cd /tmp/llama_release && make -j )
-# import os; os.environ['GGML_LIBRARY'] = '/tmp/llama_release/libggml_shared.dylib'
+# rm -fR /tmp/llama_release ; cmake ../../../llama.cpp -B /tmp/llama_release -DCMAKE_C_FLAGS=-Ofast -DLLAMA_NATIVE=1 -DLLAMA_LTO=1 -DLLAMA_METAL=1 -DBUILD_SHARED_LIBS=1 -DLLAMA_BUILD_EXAMPLES=0 -DLLAMA_BUILD_TESTS=0 -DCMAKE_BUILD_TYPE=Release && ( cd /tmp/llama_release && make -j )
+import os; os.environ['GGML_LIBRARY'] = '/tmp/llama_release/libggml_shared.dylib'
 
 # cmake ../../../llama.cpp -B /tmp/llama_debug -DLLAMA_METAL=1 -DBUILD_SHARED_LIBS=1 -DLLAMA_BUILD_EXAMPLES=0 -DLLAMA_BUILD_TESTS=0 -DCMAKE_BUILD_TYPE=Debug && ( cd /tmp/llama_debug && make -j )
-import os; os.environ['GGML_LIBRARY'] = '/tmp/llama_debug/libggml_shared.dylib'
+# import os; os.environ['GGML_LIBRARY'] = '/tmp/llama_debug/libggml_shared.dylib'
 
 # python llama2.c.py ~/AI/Models/llama2.c.stories15M.bin ../../../llama2.c/tokenizer.bin --prompt "Hello, world"
 
 from ggml import lib, ffi
-from ggml.utils import init, numpy, copy
+from ggml.utils import init, numpy, copy, describe
 import numpy as np
 from dataclasses import dataclass
 from typing import List, Tuple, Optional, Union, Dict, Any, Callable, TypeVar, Generic
@@ -208,161 +208,255 @@ rms_norm_eps = 1e-5
 rope_freq_base  = 10000.0
 rope_freq_scale = 1.0
        
-def transformer(ctx: Context, token: int, pos: int, p: Config, s: RunState, w: TransformerWeights):
-    dtype = np.float32
+def info(name, t):
+    print(f'{name} {describe(t)}')
+    pass
 
-    # a few convenience variables
-    x = s.x
-    x_ = s.x_
-    dim = p.dim
-    head_size = dim // p.n_heads
-    head_size_sqrt = math.sqrt(head_size)
-    assert dim % p.n_heads == 0
+# LLAMA_USE_SCRATCH=False
+def use_buf(ctx, i: int):
+    pass
+    #     if LLAMA_USE_SCRATCH:
+    #         last_size = 0
+    #         if i == -1:
+    #             last_size = ggml_set_scratch(ctx, { 0, 0, nullptr, })
 
-    pos_tensor = lib.ggml_new_i32(ctx.ctx, pos + 10)
+    #     if (i == -1) {
+    #         last_size = ggml_set_scratch(ctx, { 0, 0, nullptr, })
+    #     } else {
+    #         auto & buf = buf_scratch[i]
+    #         last_size = ggml_set_scratch(ctx, { 0, buf.size, buf.addr, })
+    #     }
 
-    # copy the token embedding into x
-    content_row_ = w.token_embedding_table_[token, :]
-    assert content_row_.shape == (dim,)
-    np.copyto(x_, content_row_)
+    #     if (buf_last >= 0) {
+    #         buf_max_size[buf_last] = std::max(buf_max_size[buf_last], last_size)
+    #     }
 
-    zero_xb = np.zeros(dim, dtype)
+    #     buf_last = i
+    # #else
+    #     (void) i
+    #     (void) ctx
+    # #endif
 
-    def rmsnorm(ctx, x, w):
-        return lib.ggml_mul(ctx, lib.ggml_rms_norm(ctx, x, rms_norm_eps), w)
-
-    def mulmat(ctx, a, b):
-        if a.n_dims == 2 and a.ne[0] == 1 and a.ne[0] != b.ne[0]:
-            a = lib.ggml_reshape_1d(ctx, a, a.ne[1])
-        return lib.ggml_mul_mat(ctx, a, b)
+def llama_build_graph(p: Config, s: RunState, w: TransformerWeights, tokens: Optional[list[int]], embd: Optional[np.ndarray], n_tokens: int, n_past: int):
     
-    def add(ctx, a, b):
-        if b.n_dims == 2 and b.ne[0] == 1:
-            b = lib.ggml_reshape_1d(ctx, b, b.ne[1])
-        return lib.ggml_add(ctx, a, b)
-    
-    def mul(ctx, a, b):
-        return lib.ggml_mul(ctx, a, b)
-    
-    def rope(ctx, a, heads, pos):
-        return lib.ggml_reshape_1d(
-            ctx,
-            # Broadcast rope encoding to all heads
-            lib.ggml_rope_custom_inplace_dyn(
-                ctx,
-                lib.ggml_reshape_2d(ctx, a, p.head_size, heads),
-                pos, p.head_size, 0, 0, rope_freq_base, rope_freq_scale),
-            p.dim)
+# def llama_build_graph(lctx, tokens: Optional[list[int]], embd: Optional[np.ndarray], n_tokens: int, n_past: int):
+    assert ((not tokens and embd) or (tokens and not embd))
 
-    # forward all the layers
-    for l in range(p.n_layers):
+    N = n_tokens
+
+    # model   = lctx.model
+    # hparams = model.hparams
+
+    # kv_self = lctx.kv_self
+
+    # N = 1 # n_tokens
+    n_gqa = p.n_heads // p.n_kv_heads
+    # n_past = pos
+    n_embd = p.dim
+    n_embd_gqa = p.dim // n_gqa
+    n_embd_head = p.head_size
+    n_layer = p.n_layers
+    n_ctx = p.seq_len
+    n_head = p.n_heads
+    n_head_kv = p.n_kv_heads
+    
+    # print(f"N = n_tokens: {n_tokens}")
+    # print(f"n_past: {n_past}")
+    # print(f"n_embd: {n_embd}")
+    # print(f"n_layer: {n_layer}")
+    # print(f"n_ctx: {n_ctx}")
+    # print(f"n_head: {n_head}")
+    # print(f"n_head_kv: {n_head_kv}")
+    # print(f"n_embd_head: {n_embd_head}")
+    # print(f"n_embd_gqa: {n_embd_gqa}")
+
+    # freq_base  = rope_freq_base
+    # freq_scale = rope_freq_scale
+
+
+    params = ffi.new('struct ggml_init_params*')
+    params.mem_size = 102*1024*1024
+    params.mem_buffer = ffi.NULL
+    params.no_alloc = False
+    ctx0 = lib.ggml_init(params[0])
+
+    gf = lib.ggml_new_graph(ctx0)
+
+    assert tokens
+    # assert len(tokens) == 1
+
+    content_row_ = w.token_embedding_table_[tokens[-1], :]
+    assert content_row_.shape == (p.dim,)
+    inpL = lib.ggml_new_tensor_1d(ctx0, lib.GGML_TYPE_F32, p.dim)
+    copy(content_row_, inpL)
+
+    # if tokens:
+    #     inp_tokens = lib.ggml_new_tensor_1d(ctx0, lib.GGML_TYPE_I32, N)
+    #     ffi.memmove(inp_tokens.data, np.array(tokens, dtype=int), N*lib.ggml_element_size(inp_tokens))
+    #     print(numpy(inp_tokens))
+
+    #     info("w.token_embedding_table", w.token_embedding_table)
+    #     inpL = lib.ggml_get_rows(ctx0, lib.ggml_transpose(ctx0, w.token_embedding_table), inp_tokens)
+    #     info("inpL", inpL)
+    #     # assert 
+    # else:
+    #     inpL = lib.ggml_new_tensor_2d(ctx0, lib.GGML_TYPE_F32, n_embd, N)
+
+    #     ffi.memmove(inpL.data, ffi.frombuffer(embd), N * n_embd * lib.ggml_element_size(inpL))
+
+
+    KQ_scale = lib.ggml_new_tensor_1d(ctx0, lib.GGML_TYPE_F32, 1)
+    lib.ggml_set_f32(KQ_scale, 1.0/math.sqrt(float(n_embd)/n_head))
+
+    for il in range(n_layer):
+        inpSA = inpL
+
+        # use_buf(ctx0, 0)
+
+        #  norm
+        cur = lib.ggml_rms_norm(ctx0, inpL, rms_norm_eps)
+
+        #  cur = cur*attention_norm(broadcasted)
+        cur = lib.ggml_mul(ctx0, cur, w.rms_att_weight[il])
+
+        #  self-attention
         
-        # Fused graph for attention rmsnorm, qkv matmuls, RoPE encoding of q & k for this position
-        (q, k, v) = ctx.execute(
-            "rmsnorm + qkv matmuls",
-            {
-                "x": x,
-                "att_w": w.rms_att_weight[l],
-                "wq": w.wq[l],
-                "wk": w.wk[l],
-                "wv": w.wv[l],
-                "pos": pos_tensor
-            }, {
-                # attention rmsnorm
-                "normout": lambda ctx, x, att_w: rmsnorm(ctx, x, att_w),
-            },
-            # qkv matmuls for this position and RoPE for q & k
-            lambda ctx, normout, wq, wk, wv, pos: (
-                rope(ctx, mulmat(ctx, normout, wq), p.n_heads, pos), # per-head RoPE(q = normout * wq)
-                rope(ctx, mulmat(ctx, normout, wk), p.n_kv_heads, pos), # per-head RoPE(k = normout * wk)
-                mulmat(ctx, normout, wv), # v = normout * wv
-            ))#, cache=False)
+        #  compute Q and K and RoPE them
+        tmpk = lib.ggml_mul_mat(ctx0, w.wk[il], cur)
 
-        # save key,value at this time step (pos) to our kv cache
-        copy(k, s.key_cache_[l, pos])
-        copy(v, s.value_cache_[l, pos])
+        tmpq = lib.ggml_mul_mat(ctx0, w.wq[il], cur)
 
-        copy(zero_xb, s.xb_)
+        Kcur = lib.ggml_rope_custom_inplace(ctx0, lib.ggml_reshape_3d(ctx0, tmpk, n_embd_head, n_head_kv, N), n_past, n_embd_head, 0, 0, rope_freq_base, rope_freq_scale)
 
-        q_ = numpy(q).reshape((dim,))
-        q_heads_ = q_.reshape(p.n_heads, p.head_size)
+        Qcur = lib.ggml_rope_custom_inplace(ctx0, lib.ggml_reshape_3d(ctx0, tmpq, n_embd_head, n_head, N),    n_past, n_embd_head, 0, 0, rope_freq_base, rope_freq_scale)
+
+        #  store key and value to memory
         
-        # multihead attention. iterate over all heads
-        for h in range(p.n_heads):
-            # get the query vector for this head
-            q = q_heads_[h]
-            # attention scores for this head
-            att = s.att_[h, :]
-            # iterate over all timesteps, including the current one
-            for t in range(pos+1):
-                # get the key vector for this head and at this timestep
-                k = s.key_cache_heads_[l, t, h]
-                # calculate the attention score as the dot product of q and k
-                score = np.dot(q, k) / head_size_sqrt
-                # save the score to the attention buffer
-                att[t] = score
+        #  compute the transposed [N, n_embd] V matrix
 
-            # softmax the scores to get attention weights, from 0..pos inclusively
-            att[0:pos+1] = sp.special.softmax(att[0:pos+1])
+        tmpv = lib.ggml_mul_mat(ctx0, w.wv[il], cur)
 
-            # weighted sum of the values, store back into xb
+        Vcur = lib.ggml_transpose(ctx0, lib.ggml_reshape_2d(ctx0, tmpv, n_embd_gqa, N))
 
-            for t in range(pos+1):
-                # get the value vector for this head and at this timestep
-                v = s.value_cache_heads_[l, t, h]
-                # get the attention weight for this timestep
-                a = att[t]
-                # accumulate the weighted value into xb
-                for i in range(head_size):
-                    s.xb_heads_[h, i] += a * v[i]
+        k = lib.ggml_view_1d(ctx0, s.key_cache, N*n_embd_gqa, (lib.ggml_element_size(s.key_cache)*n_embd_gqa)*(il*n_ctx + n_past))
 
-        x = ctx.execute(
-            "attention",
-            {   
-                "x": x,
-                "xb": s.xb,
-                "ffn_w": w.rms_ffn_weight[l],
-                "w1": w.w1[l], "w2": w.w2[l], "w3": w.w3[l], "wo": w.wo[l] },
-            {
-                "xx": lambda ctx, x, xb, wo:
-                    # residual connection back into x
-                    add(
-                        ctx, x,
-                        # projection (no bias)
-                        # final matmul to get the output of the attention   
-                        mulmat(ctx, xb, wo)
-                    ),
-                "normout": lambda ctx, xx, ffn_w:
-                    # ffn rmsnorm
-                    rmsnorm(ctx, xx, ffn_w)
-            },
-            lambda ctx, normout, xx, w1, w2, w3:
-                # residual connection
-                add(ctx, xx, 
-                    # final matmul by w2 to get the output of the ffn
-                    mulmat(
-                        ctx,
-                        # silu(w1(x)) x w3(x)
-                        mul(
-                            ctx,
-                            lib.ggml_silu(ctx, mulmat(ctx, normout, w1)),
-                            mulmat(ctx, normout, w3)),
-                        w2)))
+        v = lib.ggml_view_2d(ctx0, s.value_cache, N, n_embd_gqa,
+                (   n_ctx)*lib.ggml_element_size(s.value_cache),
+                (il*n_ctx)*lib.ggml_element_size(s.value_cache)*n_embd_gqa + n_past*lib.ggml_element_size(s.value_cache))
 
-    return ctx.execute(
-        "final rms + logits",
-        {   
-            "x": x,
-            "final_w": w.rms_final_weight,
-            "wcls": w.wcls,
-        },
-        {},
-        lambda ctx, final_w, wcls:
-            # classifier into logits
-            mulmat(ctx,
-                # final rmsnorm
-                rmsnorm(ctx, x, final_w),
-                w.wcls))
+        #  important: storing RoPE-ed version of K in the KV cache!
+        lib.ggml_build_forward_expand(gf, lib.ggml_cpy(ctx0, Kcur, k))
+        lib.ggml_build_forward_expand(gf, lib.ggml_cpy(ctx0, Vcur, v))
+
+        Q = lib.ggml_permute(ctx0,
+                    Qcur,
+                    0, 2, 1, 3)
+
+        K = lib.ggml_permute(ctx0,
+                    lib.ggml_reshape_3d(ctx0,
+                        lib.ggml_view_1d(ctx0, s.key_cache, (n_past + N)*n_embd_gqa, il*n_ctx*lib.ggml_element_size(s.key_cache)*n_embd_gqa),
+                        n_embd_head, n_head_kv, n_past + N),
+                    0, 2, 1, 3)
+
+        #  K * Q
+        KQ = lib.ggml_mul_mat(ctx0, K, Q)
+
+        #  KQ_scaled = KQ / sqrt(n_embd_head)
+        #  KQ_scaled shape [n_past + N, N, n_head, 1]
+        KQ_scaled = lib.ggml_scale_inplace(ctx0, KQ, KQ_scale)
+
+        #  KQ_masked = mask_past(KQ_scaled)
+        KQ_masked = lib.ggml_diag_mask_inf_inplace(ctx0, KQ_scaled, n_past)
+
+        #  KQ = soft_max(KQ_masked)
+        KQ_soft_max = lib.ggml_soft_max_inplace(ctx0, KQ_masked)
+
+        #  split cached V into n_head heads
+        V = lib.ggml_view_3d(ctx0, s.value_cache,
+                    n_past + N, n_embd_head, n_head_kv,
+                    n_ctx*lib.ggml_element_size(s.value_cache),
+                    n_ctx*lib.ggml_element_size(s.value_cache)*n_embd_head,
+                    n_ctx*lib.ggml_element_size(s.value_cache)*n_embd_gqa*il)
+
+        # if True:
+        if False:
+            KQV = lib.ggml_mul_mat(ctx0, V, KQ_soft_max)
+        else:
+            #  make V contiguous in memory to speed up the matmul, however we waste time on the copy
+            #  on M1 this is faster for the perplexity computation, but ~5% slower for the single-token generation
+            #  is there a better way?
+            V_cont = lib.ggml_cpy(ctx0, V, lib.ggml_new_tensor_3d(ctx0, s.value_cache.type, n_past + N, n_embd_head, n_head))
+            KQV = lib.ggml_mul_mat(ctx0, V_cont, KQ_soft_max)
+
+        #  KQV_merged = KQV.permute(0, 2, 1, 3)
+        KQV_merged = lib.ggml_permute(ctx0, KQV, 0, 2, 1, 3)
+
+        #  cur = KQV_merged.contiguous().view(n_embd, N)
+        cur = lib.ggml_cpy(ctx0,
+                KQV_merged,
+                lib.ggml_new_tensor_2d(ctx0, lib.GGML_TYPE_F32, n_embd, N))
+
+        #  projection (no bias)
+        cur = lib.ggml_mul_mat(ctx0,
+                w.wo[il],
+                cur)
+
+        # use_buf(ctx0, 1)
+
+        inpFF = lib.ggml_add(ctx0, cur, inpSA)
+
+        #  feed-forward network
+        
+        #  norm
+        cur = lib.ggml_rms_norm(ctx0, inpFF, rms_norm_eps)
+
+        #  cur = cur*ffn_norm(broadcasted)
+        cur = lib.ggml_mul(ctx0, cur, w.rms_ffn_weight[il])
+
+        tmp = lib.ggml_mul_mat(ctx0,
+                w.w3[il],
+                cur)
+
+        cur = lib.ggml_mul_mat(ctx0,
+                w.w1[il],
+                cur)
+
+        #  SILU activation
+        cur = lib.ggml_silu(ctx0, cur)
+
+        cur = lib.ggml_mul(ctx0, cur, tmp)
+
+        cur = lib.ggml_mul_mat(ctx0,
+                w.w2[il],
+                cur)
+
+        cur = lib.ggml_add(ctx0, cur, inpFF)
+
+        #  input for next layer
+        inpL = cur
+
+    # use_buf(ctx0, 0)
+
+    #  norm
+    
+    cur = lib.ggml_rms_norm(ctx0, inpL, rms_norm_eps)
+
+    #  cur = cur*norm(broadcasted)
+    cur = lib.ggml_mul(ctx0, cur, w.rms_final_weight)
+
+    #  lm_head
+    cur = lib.ggml_mul_mat(ctx0, w.wcls, cur)
+
+    # use_buf(ctx0, -1)
+
+    #  logits -> probs
+    # cur = lib.ggml_soft_max_inplace(ctx0, cur)
+
+    lib.ggml_build_forward_expand(gf, cur)
+
+    lib.ggml_free(ctx0)
+
+    return gf
 
 def lookup_token(str: str, v: Vocabulary):
     left, right = 0, v.vocab_size - 1
@@ -501,14 +595,121 @@ def sample_topp(probabilities: TensorLike, n: int, topp: float) -> int:
             return probindex[i].index
     return probindex[last_idx].index # in case of rounding errors
 
+GGML_USE_MPI=False
+LLAMA_USE_ALLOCATOR=False
+GGML_USE_METAL=False
+
+# evaluate the transformer
+#
+#   - lctx:      llama context
+#   - tokens:    new batch of tokens to process
+#   - embd       embeddings input
+#   - n_tokens   number of tokens
+#   - n_past:    the context size so far
+#   - n_threads: number of threads to use
+#
+def llama_eval(p: Config, s: RunState, w: TransformerWeights, tokens: Optional[list[int]], embd: Optional[np.ndarray], n_tokens: int, n_past: int, n_threads: int):
+    # if GGML_USE_MPI:
+    #     ggml_mpi_eval_init(s.ctx_mpi, &n_tokens, &n_past, &n_threads)
+
+    N = n_tokens
+    # if LLAMA_USE_ALLOCATOR:
+    #     ggml_allocr_reset(lctx.alloc)
+
+    gf = llama_build_graph(p, s, w, tokens, embd, n_tokens, n_past)
+
+    # if LLAMA_USE_ALLOCATOR:
+    #     ggml_allocr_alloc_graph(lctx.alloc, gf)
+
+    # LLAMA_LOG_INFO("graph build time: %.3f ms (%d nodes, %d leafs)\n", (ggml_time_us() - t_start_us)/1000.0, gf->n_nodes, gf->n_leafs)
+
+    # for big prompts, if BLAS is enabled, it is better to use only one thread
+    # otherwise, the threads are spin-lock waiting for the BLAS calls and are degrading the performance
+    n_threads = 1 if N >= 32 and lib.ggml_cpu_has_blas() and not lib.ggml_cpu_has_gpublas() else n_threads
+
+    res = gf.nodes[gf.n_nodes - 1]
+    embeddings = gf.nodes[gf.n_nodes - 2]
+
+    # LLAMA_ASSERT(strcmp(res->name, "result_output") == 0)
+    # LLAMA_ASSERT(strcmp(embeddings->name, "result_norm") == 0)
+
+    # if GGML_USE_MPI:
+    #     lib.ggml_mpi_graph_compute_pre(lctx.ctx_mpi, gf, n_layer)
+
+    if GGML_USE_METAL:
+        if s.ctx_metal and N == 1:
+            # TODO: disabled until #2413 is resolved
+            #if (!lib.ggml_metal_if_optimized(lctx.ctx_metal)) {
+            #    lib.ggml_metal_graph_find_concurrency(lctx.ctx_metal, gf)
+            #}
+            lib.ggml_metal_set_n_cb     (lctx.ctx_metal, n_threads)
+            lib.ggml_metal_graph_compute(lctx.ctx_metal, gf)
+            lib.ggml_metal_get_tensor   (lctx.ctx_metal, res)
+            if not lctx.embedding.empty():
+                lib.ggml_metal_get_tensor(lctx.ctx_metal, embeddings)
+        else:
+            # IMPORTANT:
+            # Since we don't have efficient Matrix x Matrix Metal multiplication yet, we fallback to vanilla
+            # ggml_graph_compute(). It uses Apple's Accelerate CBLAS API which takes advantage of the ANE or the AMX
+            # coprocessor.
+            #
+            # When we implement Matrix x Matrix Metal multiplication, we can avoid this branch.
+            # But for now, we have focused only on Matrix x Vector Metal multiplication.
+            #
+            # TODO: avoid these syncs via shared memory (ref #1696)
+            #
+            if (lctx.ctx_metal):
+                # We need to sync the GPU KV cache with the CPU KV cache
+                lib.ggml_metal_get_tensor(lctx.ctx_metal, kv_self.k)
+                lib.ggml_metal_get_tensor(lctx.ctx_metal, kv_self.v)
+
+            lib.ggml_graph_compute_helper(lctx.work_buffer, gf, n_threads)
+    else:
+        # lib.ggml_graph_compute_helper(lctx.work_buffer, gf, n_threads)
+        plan = lib.ggml_graph_plan(gf, n_threads)
+
+        # if plan.work_size > 0:
+        #     buf.resize(plan.work_size)
+        #     plan.work_data = buf.data()
+
+        lib.ggml_graph_compute(gf, ffi.addressof(plan))
+
+    # if GGML_USE_MPI:
+    #     lib.ggml_mpi_graph_compute_post(lctx.ctx_mpi, gf, n_layer)
+
+    # update kv token count
+    s.cache_length = n_past + N
+
+    # extract logits
+    # if logits_all:
+    #     logits_out.resize(n_vocab * N)
+    #     memcpy(logits_out.data(), (float *) ggml_get_data(res), sizeof(float)*n_vocab*N)
+    # else:
+    #     # return result for just the last token
+    #     logits_out.resize(n_vocab)
+    #     memcpy(logits_out.data(), (float *) ggml_get_data(res) + (n_vocab*(N-1)), sizeof(float)*n_vocab)
+    info("res", res)
+    logits = numpy(res)[-p.vocab_size*(N-1):]
+
+    # extract embeddings
+    info("embeddings", embeddings)
+    embeddings = numpy(embeddings)[-p.dim*(N-1):]
+
+    return (logits, embeddings)
+
+def llama_token_bos(): return 1
+def llama_token_eos(): return 2
+def llama_token_nl(): return 13
+
 def run(
         model: Path,
         tokenizer_model: Path,
         prompt: Optional[str] = None,
         steps: int = 128,
-        # temperature: float = 0.0,
-        temperature: float = 1.0,
+        temperature: float = 0.0,
+        # temperature: float = 1.0,
         seed: Optional[int] = None,
+        auto_stop = False,
         n_threads: int = 8,
         topp: float = 0.9): # top-p in nucleus sampling
 
@@ -523,7 +724,7 @@ def run(
 
     print(config)
 
-    ctx = init(mem_size=1*1024*1024*1024)
+    ctx = init(mem_size=100*1024*1024*1024)
     context = Context(ctx, n_threads)
 
     # type = lib.GGML_TYPE_Q5_K
@@ -552,10 +753,28 @@ def run(
     token = 1   # init with token 1 (=BOS), as done in Llama-2 sentencepiece tokenizer
     pos = 0     # position in the sequence
     
+    # tokens = [*prompt_tokens] if prompt_tokens else [1]
+    # embd = None
+
+    embd = prompt_tokens if prompt_tokens else [1]
+
+    # n_batch = 1
+    # n_past = 0
+    # for i in range(0, len(embd), n_batch):
+    #     n_eval = math.min(len(embd.size) - i, n_batch)
+    #     if n_eval > n_batch:
+    #         n_eval = n_batch
+            
+    #     (logits, embeddings) = llama_eval(config, state, weights, embd, None, n_eval, n_past, n_threads)
+    #     n_past += n_eval
+
+    # embd = []
+
     while (pos < steps):
 
-        # forward the transformer to get logits for the next token
-        logits = numpy(transformer(context, token, pos, config, state, weights)).transpose()
+        (logits, embeddings) = llama_eval(config, state, weights, embd, None, n_tokens=1, n_past=pos, n_threads=n_threads)
+        
+        # logits = numpy(transformer(context, token, pos, config, state, weights)).transpose()
 
         # advance the state state machine
         if(pos < (len(prompt_tokens) if prompt_tokens else 0)):
@@ -568,8 +787,10 @@ def run(
                 next = np.argmax(logits)
             else:
                 # apply the temperature to the logits
-                for q in range(config.vocab_size): logits[q] /= temperature
+                logits /= temperature
+                # for q in range(config.vocab_size): logits[q] /= temperature
                 # apply softmax to the logits to get the probabilities for next token
+
                 logits = sp.special.softmax(logits)
                 # we sample from this distribution to get the next token
                 if (topp <= 0):
@@ -582,16 +803,22 @@ def run(
         pos += 1
 
         # data-dependent terminating condition: the BOS (1) token delimits sequences
-        if (next == 1): break
+        if auto_stop:
+            if next == llama_token_bos(): break
+            if next == llama_token_eos():
+                print(" [end of text]\n", file=sys.stderr)
+                break
 
         # following BOS (1) token, sentencepiece decoder strips any leading whitespace (see PR #89)
-        if token == 1 and vocab.vocab[next][0] == ' ':
+        if embd[-1] == 1 and vocab.vocab[next][0] == ' ':
             token_str = vocab.vocab[next][1:]
         else:
             token_str = vocab.vocab[next]
         sys.stdout.write(token_str)
         sys.stdout.flush()
-        token = next
+
+        embd.append(next)
+        # token = next
 
         # init the timer here because the first iteration can be slower
         if start == 0: start = time.time()
