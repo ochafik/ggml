@@ -128,6 +128,16 @@ def generate_stubs(header: str):
         '# auto-generated file',
         'import ggml.ffi as ffi',
         'import numpy as np',
+        'from typing import Union',
+        '',
+        'class ffi:',
+        '  def typeof(x) -> ffi.CType: ...',
+        '  def new(type: ffi.CType, *args, **kwargs) -> ffi.CData: ...',
+        '  def cast(type: Union[ffi.CType, str], data: ffi.CData) -> ffi.CData: ...',
+        '  def from_buffer(data: Union[bytes, bytearray, memoryview]) -> ffi.CData: ...',
+        '  def buffer(data: ffi.CData, size: int) -> Union[bytes, bytearray, memoryview]: ...',
+        '  def string(data: ffi.CData) -> str: ...',
+        '',
         'class lib:',
         *[v.sigs[k] for k in keys]
     ])

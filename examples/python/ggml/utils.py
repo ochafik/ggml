@@ -4,6 +4,7 @@
 from ggml import ffi, lib
 from typing import Union, Optional
 import numpy as np
+import ctypes, signal, sys, inspect # for debug helpers
 
 def init(mem_size: int, mem_buffer: ffi.CData = ffi.NULL, no_alloc: bool = False) -> ffi.CData:
     """
@@ -92,6 +93,52 @@ def numpy(tensor: ffi.CData, allow_copy: Union[bool, np.ndarray] = False, allow_
         array = np.frombuffer(ffi.buffer(lib.ggml_get_data(tensor), nbytes), dtype=dtype)
         array.shape = shape
         return array
+
+def debug_str(x):
+    if isinstance(x, ffi.CData):
+        if x == ffi.NULL: return 'NULL'
+        if ffi.typeof(x) == ffi.typeof('struct ggml_tensor*'):
+            attrs = {'shape': __get_shape(x), 'type': ffi.string(lib.ggml_type_name(x.type))}
+        else:
+            attrs = {k: debug_str(getattr(x, k))for k in dir(x)}
+        return f"<{ffi.typeof(x).cname} {', '.join([f'{k}={v}' for k, v in attrs.items()])}>"
+    return str(x)
+
+@ctypes.CFUNCTYPE(None, ctypes.c_int)
+def __sigabrt_handler(sig):
+    print('SIGABRT handled!')
+    curr_frame = sys._getframe(1)
+
+    def accept(visitor):
+        for fi in inspect.getouterframes(curr_frame):
+            visitor(fi.frame, fi.function)
+        traceback = inspect.getframeinfo(curr_frame)
+        visitor(curr_frame, traceback.function)
+        
+    def print_stack():
+        def print_frame(frame, function):
+            print(f'\n  File "{frame.f_code.co_filename}", line {frame.f_lineno}, in {function}')
+            for k, v in frame.f_locals.items():
+                symbols[k] = v
+                s = debug_str(v)
+                if len(s) > 400: s = s[:400] + '...'
+                print(f'    {k}: {s}')
+        accept(print_frame)
+    
+    symbols = {}
+    def collect_locals(frame, function):
+        for k, v in frame.f_locals.items(): symbols[k] = v
+    accept(collect_locals)
+    symbols['print_stack'] = print_stack
+
+    import code
+    code.interact('Debug Console (call print_stack() to display current stack and locals)', local=symbols)
+
+def debug_ggml_asserts():
+    """
+      Spawn a debugging console whenever a SIGABRT is raised (e.g. by a failed GGML_ASSERT).
+    """
+    ctypes.CDLL(None).signal(signal.SIGABRT, __sigabrt_handler)
 
 def __type_name(type: int) -> str:
     name = lib.ggml_type_name(type)
