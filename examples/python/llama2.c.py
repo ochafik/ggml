@@ -11,7 +11,7 @@ import os; os.environ['GGML_LIBRARY'] = '/tmp/llama_release/libggml_shared.dylib
 # python llama2.c.py ~/AI/Models/llama2.c.stories15M.bin ../../../llama2.c/tokenizer.bin --prompt "Hello, world"
 
 from ggml import lib, ffi
-from ggml.utils import init, numpy, copy, debug_ggml_asserts
+from ggml.utils import init, numpy, copy, debug_ggml_asserts, debug_str
 import numpy as np
 from dataclasses import dataclass
 from typing import List, Tuple, Optional, Union, Dict, Any, Callable, TypeVar, Generic
@@ -124,7 +124,8 @@ class EvalParams:
     # - ?? Raw embeddings
     # - ? Raw logits (useful for distillation?)
     # - Other sampling methods? Mirostat, etc
-    compute_logits: bool = True
+
+    all_logits: bool = False
     # extract_embeddings: bool = True
     temperature: Optional[float] = None
 
@@ -239,6 +240,8 @@ class LlamaContext:
         w = self.w
 
         N = ep.n_tokens
+        n_past = ep.n_past
+
         n_gqa = p.n_heads // p.n_kv_heads
         n_embd = p.dim
         n_embd_gqa = p.dim // n_gqa
@@ -286,43 +289,67 @@ class LlamaContext:
                 
                 #  compute Q and K and RoPE them
                 tmpk = lib.ggml_mul_mat(ctx0, w.wk[il], cur)
-                tmpq = lib.ggml_mul_mat(ctx0, w.wq[il], cur)
-                Kcur = lib.ggml_rope_custom_inplace(ctx0, lib.ggml_reshape_3d(ctx0, tmpk, n_embd_head, n_head_kv, N), ep.n_past, n_embd_head, 0, 0, rope_freq_base, rope_freq_scale)
-                Qcur = lib.ggml_rope_custom_inplace(ctx0, lib.ggml_reshape_3d(ctx0, tmpq, n_embd_head, n_head, N),    ep.n_past, n_embd_head, 0, 0, rope_freq_base, rope_freq_scale)
+                Kcur = lib.ggml_rope_custom_inplace(
+                    ctx0, lib.ggml_reshape_3d(ctx0, tmpk, n_embd_head, n_head_kv, N),
+                    n_past, n_embd_head, 0, 0,
+                    rope_freq_base, rope_freq_scale)
 
                 #  store key and value to memory
                 
                 #  compute the transposed [N, n_embd] V matrix
                 tmpv = lib.ggml_mul_mat(ctx0, w.wv[il], cur)
                 Vcur = lib.ggml_transpose(ctx0, lib.ggml_reshape_2d(ctx0, tmpv, n_embd_gqa, N))
-                k = lib.ggml_view_1d(ctx0, s.key_cache, N*n_embd_gqa, (lib.ggml_element_size(s.key_cache)*n_embd_gqa)*(il*n_ctx + ep.n_past))
+                
+                k = lib.ggml_view_1d(ctx0, s.key_cache, N*n_embd_gqa,
+                                    (lib.ggml_element_size(s.key_cache)*n_embd_gqa)*(il*n_ctx + n_past))
                 v = lib.ggml_view_2d(ctx0, s.value_cache, N, n_embd_gqa,
                         (   n_ctx)*lib.ggml_element_size(s.value_cache),
-                        (il*n_ctx)*lib.ggml_element_size(s.value_cache)*n_embd_gqa + ep.n_past*lib.ggml_element_size(s.value_cache))
+                        (il*n_ctx)*lib.ggml_element_size(s.value_cache)*n_embd_gqa + n_past*lib.ggml_element_size(s.value_cache))
+
                 #  important: storing RoPE-ed version of K in the KV cache!
                 lib.ggml_build_forward_expand(gf, lib.ggml_cpy(ctx0, Kcur, k))
                 lib.ggml_build_forward_expand(gf, lib.ggml_cpy(ctx0, Vcur, v))
 
-                if il == n_layer - 1 and not ep.compute_logits: # and not ep.return_embeddings:
-                    return GraphResult(graph=gf)
+                if il == n_layer - 1 and not ep.all_logits: # and not ep.return_embeddings:
+                    # From here on, we only care about the last token and its logits.
+                    # We do as if N = 1 (from the end)
+                    # This means we only keep the last chunk of cur and inpSA
+                    assert   cur.n_dims == 2 and   cur.ne[0] == n_embd and   cur.ne[1] == N
+                    assert inpSA.n_dims == 2 and inpSA.ne[0] == n_embd and inpSA.ne[1] == N
+                    # assert cur.nb[1] == N*lib.ggml_element_size(cur), f'Bad cur nb: {cur.nb[1]} != {N*lib.ggml_element_size(cur)}'
+                    cur   = lib.ggml_view_2d(ctx0, cur,   n_embd, 1,   cur.nb[1], (N-1)*lib.ggml_element_size(cur) * n_embd)
+                    inpSA = lib.ggml_view_2d(ctx0, inpSA, n_embd, 1, inpSA.nb[1], (N-1)*lib.ggml_element_size(inpSA) * n_embd)
+
+                    # Make cur and inpSA contiguous in memory to speed up the matmul, however we waste time on the copy
+                    # cur   = lib.ggml_cpy(ctx0, cur,   lib.ggml_new_tensor_2d(ctx0, lib.GGML_TYPE_F32, n_embd, 1))
+                    # inpSA = lib.ggml_cpy(ctx0, inpSA, lib.ggml_new_tensor_2d(ctx0, lib.GGML_TYPE_F32, n_embd, 1))
+                    
+                    n_past += N - 1
+                    N = 1
+
+                tmpq = lib.ggml_mul_mat(ctx0, w.wq[il], cur)
+                Qcur = lib.ggml_rope_custom_inplace(
+                    ctx0, lib.ggml_reshape_3d(ctx0, tmpq, n_embd_head, n_head, N),
+                    n_past, n_embd_head, 0, 0,
+                    rope_freq_base, rope_freq_scale)
 
                 Q = lib.ggml_permute(ctx0, Qcur, 0, 2, 1, 3)
                 K = lib.ggml_permute(ctx0, lib.ggml_reshape_3d(ctx0,
-                                lib.ggml_view_1d(ctx0, s.key_cache, (ep.n_past + N)*n_embd_gqa, il*n_ctx*lib.ggml_element_size(s.key_cache)*n_embd_gqa),
-                                n_embd_head, n_head_kv, ep.n_past + N),
+                                lib.ggml_view_1d(ctx0, s.key_cache, (n_past + N)*n_embd_gqa, il*n_ctx*lib.ggml_element_size(s.key_cache)*n_embd_gqa),
+                                n_embd_head, n_head_kv, n_past + N),
                             0, 2, 1, 3)
                 #  K * Q
                 KQ = lib.ggml_mul_mat(ctx0, K, Q)
                 #  KQ_scaled = KQ / sqrt(n_embd_head)
-                #  KQ_scaled shape [ep.n_past + N, N, n_head, 1]
+                #  KQ_scaled shape [n_past + N, N, n_head, 1]
                 KQ_scaled = lib.ggml_scale_inplace(ctx0, KQ, KQ_scale)
                 #  KQ_masked = mask_past(KQ_scaled)
-                KQ_masked = lib.ggml_diag_mask_inf_inplace(ctx0, KQ_scaled, ep.n_past)
+                KQ_masked = lib.ggml_diag_mask_inf_inplace(ctx0, KQ_scaled, n_past)
                 #  KQ = soft_max(KQ_masked)
                 KQ_soft_max = lib.ggml_soft_max_inplace(ctx0, KQ_masked)
                 #  split cached V into n_head heads
                 V = lib.ggml_view_3d(ctx0, s.value_cache,
-                            ep.n_past + N, n_embd_head, n_head_kv,
+                            n_past + N, n_embd_head, n_head_kv,
                             n_ctx*lib.ggml_element_size(s.value_cache),
                             n_ctx*lib.ggml_element_size(s.value_cache)*n_embd_head,
                             n_ctx*lib.ggml_element_size(s.value_cache)*n_embd_gqa*il)
@@ -333,7 +360,7 @@ class LlamaContext:
                     #  make V contiguous in memory to speed up the matmul, however we waste time on the copy
                     #  on M1 this is faster for the perplexity computation, but ~5% slower for the single-token generation
                     #  is there a better way?
-                    V_cont = lib.ggml_cpy(ctx0, V, lib.ggml_new_tensor_3d(ctx0, s.value_cache.type, ep.n_past + N, n_embd_head, n_head))
+                    V_cont = lib.ggml_cpy(ctx0, V, lib.ggml_new_tensor_3d(ctx0, s.value_cache.type, n_past + N, n_embd_head, n_head))
                     KQV = lib.ggml_mul_mat(ctx0, V_cont, KQ_soft_max)
                 #  KQV_merged = KQV.permute(0, 2, 1, 3)
                 KQV_merged = lib.ggml_permute(ctx0, KQV, 0, 2, 1, 3)
@@ -550,6 +577,7 @@ def run(
         auto_stop = True,
         debug = True,
         n_threads: int = 6,
+        skip_unused: bool = True, # Optimization that skips unused computations during prompt processing (where we only care about the last token's logits really)
         topp: float = 0.9): # top-p in nucleus sampling
 
     if debug: debug_ggml_asserts()
@@ -615,13 +643,12 @@ def run(
                 # top-p (nucleus) sampling, clamping the least likely tokens to zero
                 return sample_topp(logits, config.vocab_size, topp, state.probindex)
 
-    SKIP = os.environ.get('SKIP', '0') == '1'
-
     def mk_params(tokens):
         return EvalParams(
             n_past=pos,
             n_threads=n_threads,
             temperature=temperature,
+            all_logits=not skip_unused,
             tokens=tokens)
     
     lctx = LlamaContext(config, weights)
@@ -676,4 +703,3 @@ def run(
 
 if __name__ == '__main__':
     CLI(run)
-    
