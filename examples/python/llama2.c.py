@@ -400,14 +400,8 @@ class LlamaContext:
             lib.ggml_free(ctx0)
 
 def lookup_token(str: str, v: Vocabulary):
-    left, right = 0, v.vocab_size - 1
-    while (left <= right):
-        mid = (left + right) // 2
-        midtok = v.sorted_vocab[mid]
-        if str == midtok.str: return midtok.id
-        elif str < midtok.str: right = mid - 1
-        else: left = mid + 1
-    return -1
+    t = v.sorted_vocab[bisect.bisect_left(v.sorted_vocab, str, key=lambda x: x.str)]
+    return t.id if t.str == str else -1
 
 def lookup_merge(token1: int, token2: int, v: Vocabulary) -> int:
     return lookup_token(f"{v.vocab[token1]}{v.vocab[token2]}", v)
