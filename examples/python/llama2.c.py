@@ -111,7 +111,6 @@ rope_freq_scale = 1.0
 @dataclass
 class EvalParams:
     n_threads: int # number of threads to use
-    n_tokens: int # number of tokens
     # n_tokens: int # number of tokens
     n_past: int # the context size so far
     
@@ -304,7 +303,7 @@ class LlamaContext:
                 lib.ggml_build_forward_expand(gf, lib.ggml_cpy(ctx0, Kcur, k))
                 lib.ggml_build_forward_expand(gf, lib.ggml_cpy(ctx0, Vcur, v))
 
-                if not ep.compute_logits and not ep.return_embeddings and il == n_layer - 1:
+                if il == n_layer - 1 and not ep.compute_logits: # and not ep.return_embeddings:
                     return GraphResult(graph=gf)
 
                 Q = lib.ggml_permute(ctx0, Qcur, 0, 2, 1, 3)
@@ -395,7 +394,7 @@ class LlamaContext:
             if ep.temperature == 0.0:
                 assert _get_shape(cur) == (N, 1), f'Bad argmax shape: {_get_shape(cur)} != {(N, 1)}'
             else:
-                assert _get_shape(res) == (N, p.vocab_size), f'Bad output shape: {_get_shape(res)} != {(N, p.vocab_size)}'
+                assert _get_shape(res) == (p.vocab_size, N), f'Bad output shape: {_get_shape(res)} != {(p.vocab_size, N)}'
             # assert ffi.string(res.name).decode('utf-8') == "result_output", ffi.string(res.name)
             
             return GraphResult(graph=gf, argmax=res) if ep.temperature == 0.0 \
@@ -600,64 +599,51 @@ def run(
     # init with BOS, as done in Llama-2 sentencepiece tokenizer
     token = llama_token_bos()
 
-    lctx = LlamaContext(config, weights)
-    if prompt_tokens:
-        print("prompt token count: ", len(prompt_tokens), file=sys.stderr)
-        prompt_tokens.insert(0, token)
-        ep = EvalParams(
-            n_tokens=len(prompt_tokens),
-            n_past=0,
-            n_threads=n_threads,
-            compute_logits=True,
-            # compute_logits=False,
-            temperature=temperature,
-            tokens=prompt_tokens)
-        lctx.llama_eval(state, ep)
-        pos += len(prompt_tokens)# - 1
-        sys.stdout.write(''.join([vocab.vocab[t] for t in prompt_tokens[1:]]))
-        sys.stdout.flush()
-        token = prompt_tokens[-1]
-    #     # token = llama_token_bos()
-
-    SKIP = os.environ.get('SKIP', '0') == '1'
-
-    while (pos < steps):
-        assert pos < config.seq_len, f'pos {pos} >= seq_len {config.seq_len} (TODO: add support for context compression)'
-
-        if SKIP:
-            compute_logits = not prompt_tokens or pos >= len(prompt_tokens)# - 1
-        else:
-            compute_logits = True
-
-        ep = EvalParams(
-            tokens=[token],
-            n_past=pos,
-            n_threads=n_threads,
-            compute_logits=True,
-            temperature=temperature)
-        
-        result = lctx.llama_eval(state, ep)
-        
-        # advance the state state machine
-        if(pos < (len(prompt_tokens) if prompt_tokens else 0)):
-            # if we are still processing the input prompt, force the next prompt token
-            next = prompt_tokens[pos]
-        elif result.argmax is not None:
+    def pick_token(result: GraphResult) -> int:
+        if result.argmax is not None:
             argmax = numpy(result.argmax)
-            assert argmax.shape == (1, 1)
-            next = argmax[0, 0]
+            assert argmax.shape[1] == 1, f'Bad argmax shape: {argmax.shape} != {(1, 1)}'
+            return argmax[-1, 0]
         else:
             assert result.logits is not None
             logits = numpy(result.logits)
             assert logits.shape == (config.vocab_size, 1)
             if (topp <= 0):
                 # simply sample from the predicted probability distribution
-                next = sample(logits, config.vocab_size)
+                return sample(logits, config.vocab_size)
             else:
                 # top-p (nucleus) sampling, clamping the least likely tokens to zero
-                next = sample_topp(logits, config.vocab_size, topp, state.probindex)
+                return sample_topp(logits, config.vocab_size, topp, state.probindex)
 
+    SKIP = os.environ.get('SKIP', '0') == '1'
+
+    def mk_params(tokens):
+        return EvalParams(
+            n_past=pos,
+            n_threads=n_threads,
+            temperature=temperature,
+            tokens=tokens)
+    
+    lctx = LlamaContext(config, weights)
+
+    if prompt_tokens:
+        print("prompt token count: ", len(prompt_tokens), file=sys.stderr)
+        prompt_tokens.insert(0, token)
+
+        res = lctx.llama_eval(state, mk_params(prompt_tokens))
+        pos += len(prompt_tokens)
+        token = pick_token(res)
+        
+        sys.stdout.write(''.join([vocab.vocab[t] for t in [*prompt_tokens[1:], token]]))
+        sys.stdout.flush()
+        # token = llama_token_bos()
+
+    while (pos < steps):
+        assert pos < config.seq_len, f'pos {pos} >= seq_len {config.seq_len} (TODO: add support for context compression)'
+
+        result = lctx.llama_eval(state, mk_params([token]))
         pos += 1
+        next = pick_token(result)
 
         # data-dependent terminating condition: the BOS (1) token delimits sequences
         if auto_stop:
