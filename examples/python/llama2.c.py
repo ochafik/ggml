@@ -149,34 +149,6 @@ class Vocabulary:
 rms_norm_eps = 1e-5
 rope_freq_base  = 10000.0
 rope_freq_scale = 1.0
-       
-def info(name, t):
-    print(f'{name} {describe(t)}')
-    pass
-
-def use_buf(ctx, i: int):
-    pass
-    #     if LLAMA_USE_SCRATCH:
-    #         last_size = 0
-    #         if i == -1:
-    #             last_size = ggml_set_scratch(ctx, { 0, 0, nullptr, })
-
-    #     if (i == -1) {
-    #         last_size = ggml_set_scratch(ctx, { 0, 0, nullptr, })
-    #     } else {
-    #         auto & buf = buf_scratch[i]
-    #         last_size = ggml_set_scratch(ctx, { 0, buf.size, buf.addr, })
-    #     }
-
-    #     if (buf_last >= 0) {
-    #         buf_max_size[buf_last] = std::max(buf_max_size[buf_last], last_size)
-    #     }
-
-    #     buf_last = i
-    # #else
-    #     (void) i
-    #     (void) ctx
-    # #endif
 
 def llama_build_graph(p: Config, s: RunState, w: TransformerWeights, tokens: Optional[list[int]], embd: Optional[np.ndarray], n_tokens: int, n_past: int):
     assert ((not tokens and embd) or (tokens and not embd))
@@ -199,29 +171,13 @@ def llama_build_graph(p: Config, s: RunState, w: TransformerWeights, tokens: Opt
 
     gf = lib.ggml_new_graph(ctx0)
 
-    assert tokens
-    # assert len(tokens) == 1
-
-    # content_row_ = w.token_embedding_table_[tokens[-1], :]
-    # assert content_row_.shape == (p.dim,)
-    # inpL = lib.ggml_new_tensor_2d(ctx0, lib.GGML_TYPE_F32, p.dim, N)
-    # copy(content_row_.reshape((p.dim, N)), inpL)
-
     if tokens:
         inp_tokens = lib.ggml_new_tensor_1d(ctx0, lib.GGML_TYPE_I32, N)
-        copy(np.array(tokens, dtype=np.int32), inp_tokens)
-        # ffi.memmove(inp_tokens.data, np.array(tokens, dtype=int), N*lib.ggml_element_size(inp_tokens))
-        # assert (np.array(tokens, dtype=np.int32) == numpy(inp_tokens)).all()
-        # print(numpy(inp_tokens))
-
-        # info("w.token_embedding_table", w.token_embedding_table)
-        #inpL = lib.ggml_get_rows(ctx0, lib.ggml_transpose(ctx0, w.token_embedding_table), inp_tokens)
+        # copy(np.array(tokens, dtype=np.int32), inp_tokens)
+        ffi.memmove(inp_tokens.data, np.array(tokens, dtype=int), N*lib.ggml_element_size(inp_tokens))
         inpL = lib.ggml_get_rows(ctx0, w.token_embedding_table, inp_tokens)
-        # info("inpL", inpL)
-        # assert 
     else:
         inpL = lib.ggml_new_tensor_2d(ctx0, lib.GGML_TYPE_F32, n_embd, N)
-
         ffi.memmove(inpL.data, ffi.frombuffer(embd), N * n_embd * lib.ggml_element_size(inpL))
 
     assert _get_shape(inpL) == (n_embd, N), f'Bad input shape: {_get_shape(inpL)} != {(n_embd, N)}'
@@ -231,68 +187,47 @@ def llama_build_graph(p: Config, s: RunState, w: TransformerWeights, tokens: Opt
 
     for il in range(n_layer):
         inpSA = inpL
-
         # use_buf(ctx0, 0)
-
         #  norm
         cur = lib.ggml_rms_norm(ctx0, inpL, rms_norm_eps)
-
         #  cur = cur*attention_norm(broadcasted)
         cur = lib.ggml_mul(ctx0, cur, w.rms_att_weight[il])
 
-        #
         #  self-attention
-        #
         
         #  compute Q and K and RoPE them
         tmpk = lib.ggml_mul_mat(ctx0, w.wk[il], cur)
-
         tmpq = lib.ggml_mul_mat(ctx0, w.wq[il], cur)
-
         Kcur = lib.ggml_rope_custom_inplace(ctx0, lib.ggml_reshape_3d(ctx0, tmpk, n_embd_head, n_head_kv, N), n_past, n_embd_head, 0, 0, rope_freq_base, rope_freq_scale)
-
         Qcur = lib.ggml_rope_custom_inplace(ctx0, lib.ggml_reshape_3d(ctx0, tmpq, n_embd_head, n_head, N),    n_past, n_embd_head, 0, 0, rope_freq_base, rope_freq_scale)
 
-        #
         #  store key and value to memory
-        #
         
         #  compute the transposed [N, n_embd] V matrix
-
         tmpv = lib.ggml_mul_mat(ctx0, w.wv[il], cur)
-
         Vcur = lib.ggml_transpose(ctx0, lib.ggml_reshape_2d(ctx0, tmpv, n_embd_gqa, N))
-
         k = lib.ggml_view_1d(ctx0, s.key_cache, N*n_embd_gqa, (lib.ggml_element_size(s.key_cache)*n_embd_gqa)*(il*n_ctx + n_past))
-
         v = lib.ggml_view_2d(ctx0, s.value_cache, N, n_embd_gqa,
                 (   n_ctx)*lib.ggml_element_size(s.value_cache),
                 (il*n_ctx)*lib.ggml_element_size(s.value_cache)*n_embd_gqa + n_past*lib.ggml_element_size(s.value_cache))
-
         #  important: storing RoPE-ed version of K in the KV cache!
         lib.ggml_build_forward_expand(gf, lib.ggml_cpy(ctx0, Kcur, k))
         lib.ggml_build_forward_expand(gf, lib.ggml_cpy(ctx0, Vcur, v))
 
         Q = lib.ggml_permute(ctx0, Qcur, 0, 2, 1, 3)
-
         K = lib.ggml_permute(ctx0, lib.ggml_reshape_3d(ctx0,
                         lib.ggml_view_1d(ctx0, s.key_cache, (n_past + N)*n_embd_gqa, il*n_ctx*lib.ggml_element_size(s.key_cache)*n_embd_gqa),
                         n_embd_head, n_head_kv, n_past + N),
                     0, 2, 1, 3)
-
         #  K * Q
         KQ = lib.ggml_mul_mat(ctx0, K, Q)
-
         #  KQ_scaled = KQ / sqrt(n_embd_head)
         #  KQ_scaled shape [n_past + N, N, n_head, 1]
         KQ_scaled = lib.ggml_scale_inplace(ctx0, KQ, KQ_scale)
-
         #  KQ_masked = mask_past(KQ_scaled)
         KQ_masked = lib.ggml_diag_mask_inf_inplace(ctx0, KQ_scaled, n_past)
-
         #  KQ = soft_max(KQ_masked)
         KQ_soft_max = lib.ggml_soft_max_inplace(ctx0, KQ_masked)
-
         #  split cached V into n_head heads
         V = lib.ggml_view_3d(ctx0, s.value_cache,
                     n_past + N, n_embd_head, n_head_kv,
@@ -308,45 +243,30 @@ def llama_build_graph(p: Config, s: RunState, w: TransformerWeights, tokens: Opt
             #  is there a better way?
             V_cont = lib.ggml_cpy(ctx0, V, lib.ggml_new_tensor_3d(ctx0, s.value_cache.type, n_past + N, n_embd_head, n_head))
             KQV = lib.ggml_mul_mat(ctx0, V_cont, KQ_soft_max)
-
         #  KQV_merged = KQV.permute(0, 2, 1, 3)
         KQV_merged = lib.ggml_permute(ctx0, KQV, 0, 2, 1, 3)
-
         #  cur = KQV_merged.contiguous().view(n_embd, N)
         cur = lib.ggml_cpy(ctx0,
                 KQV_merged,
                 lib.ggml_new_tensor_2d(ctx0, lib.GGML_TYPE_F32, n_embd, N))
-
         #  projection (no bias)
         cur = lib.ggml_mul_mat(ctx0, w.wo[il], cur)
-
         # use_buf(ctx0, 1)
-
         inpFF = lib.ggml_add(ctx0, cur, inpSA)
 
-        #
         #  feed-forward network
-        #
         
         #  norm
         cur = lib.ggml_rms_norm(ctx0, inpFF, rms_norm_eps)
-
         #  cur = cur*ffn_norm(broadcasted)
         cur = lib.ggml_mul(ctx0, cur, w.rms_ffn_weight[il])
-
         tmp = lib.ggml_mul_mat(ctx0, w.w3[il], cur)
-
         cur = lib.ggml_mul_mat(ctx0, w.w1[il], cur)
-
         #  SILU activation
         cur = lib.ggml_silu(ctx0, cur)
-
         cur = lib.ggml_mul(ctx0, cur, tmp)
-
         cur = lib.ggml_mul_mat(ctx0, w.w2[il], cur)
-
         cur = lib.ggml_add(ctx0, cur, inpFF)
-
         #  input for next layer
         inpL = cur
 
@@ -354,13 +274,10 @@ def llama_build_graph(p: Config, s: RunState, w: TransformerWeights, tokens: Opt
 
     #  norm
     cur = lib.ggml_rms_norm(ctx0, inpL, rms_norm_eps)
-
     #  cur = cur*norm(broadcasted)
     cur = lib.ggml_mul(ctx0, cur, w.rms_final_weight)
-
     #  lm_head
     cur = lib.ggml_mul_mat(ctx0, w.wcls, cur)
-
     # use_buf(ctx0, -1)
 
     #  logits -> probs
@@ -620,12 +537,11 @@ def run(
         tokenizer_model: Path,
         prompt: Optional[str] = None,
         steps: int = 128,
-        # temperature: float = 0.0,
         temperature: float = 1.0,
         seed: Optional[int] = None,
         auto_stop = True,
         debug = True,
-        n_threads: int = 8,
+        n_threads: int = 6,
         topp: float = 0.9): # top-p in nucleus sampling
 
     if debug: debug_ggml_asserts()
