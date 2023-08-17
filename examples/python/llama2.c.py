@@ -112,6 +112,7 @@ rope_freq_scale = 1.0
 class EvalParams:
     n_threads: int # number of threads to use
     n_tokens: int # number of tokens
+    # n_tokens: int # number of tokens
     n_past: int # the context size so far
     
     tokens: Optional[list[int]] = None # new batch of tokens to process
@@ -127,6 +128,10 @@ class EvalParams:
     compute_logits: bool = True
     # extract_embeddings: bool = True
     temperature: Optional[float] = None
+
+    @property
+    def n_tokens(self):
+        return len(self.tokens) if self.tokens else self.embd.shape[1]
 
 @dataclass
 class GraphResult:
@@ -626,7 +631,6 @@ def run(
 
         ep = EvalParams(
             tokens=[token],
-            n_tokens=1,
             n_past=pos,
             n_threads=n_threads,
             compute_logits=True,
