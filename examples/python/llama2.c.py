@@ -11,24 +11,25 @@ import os; os.environ['GGML_LIBRARY'] = '/tmp/llama_release/libggml_shared.dylib
 # python llama2.c.py ~/AI/Models/llama2.c.stories15M.bin ../../../llama2.c/tokenizer.bin --prompt "Hello, world"
 
 from ggml import lib, ffi
-from ggml.utils import init, numpy, copy, describe
+from ggml.utils import init, numpy, copy, describe, debug_ggml_asserts
 import numpy as np
 from dataclasses import dataclass
 from typing import List, Tuple, Optional, Union, Dict, Any, Callable, TypeVar, Generic
 from jsonargparse import CLI
 from pathlib import Path
-import struct, os, mmap, math, sys, time, inspect, signal, re
+import struct, os, mmap, math, sys, time, inspect, signal, ctypes, re
 from collections import namedtuple
 import scipy as sp
 
 GGML_USE_MPI=False
 LLAMA_USE_ALLOCATOR=False
 GGML_USE_METAL = os.environ.get('GGML_USE_METAL', '0') == '1'
+LLAMA_USE_SCRATCH = os.environ.get('LLAMA_USE_SCRATCH', '0') == '1'
 
-# Define lib.* symbols in the global namespace:
-for name in dir(lib):
-    if re.search(r'_(cl|mpi|cuda|cublas)(_|$)', name): continue
-    globals()[name] = getattr(lib, name)
+# # Define lib.* symbols in the global namespace:
+# for name in dir(lib):
+#     if re.search(r'_(cl|mpi|cuda|cublas)(_|$)', name): continue
+#     globals()[name] = getattr(lib, name)
 
 Tensor = ffi.CData
 Context = ffi.CData
@@ -71,7 +72,7 @@ class Config:
 class TransformerWeights:
     def __init__(self, p: Config, ctx: Context, type: int, shared_weights: bool):
         # token embedding table
-        self.token_embedding_table = _new_tensor(ctx, (p.vocab_size, p.dim), type)
+        self.token_embedding_table = _new_tensor(ctx, (p.dim, p.vocab_size), type)
         # weights for rmsnorms
         self.rms_att_weight = [_new_tensor(ctx, (p.dim,), type) for _ in range(p.n_layers)]
         self.rms_ffn_weight = [_new_tensor(ctx, (p.dim,), type) for _ in range(p.n_layers)]
@@ -93,10 +94,6 @@ class TransformerWeights:
         self.wcls = _new_tensor(ctx, (p.dim, p.vocab_size), type)
         self.shared_weights = shared_weights
 
-        # numpy array views of each tensor
-        self.token_embedding_table_ = numpy(self.token_embedding_table)
-        self.freq_cis_real_ = numpy(self.freq_cis_real)
-        self.freq_cis_imag_ = numpy(self.freq_cis_imag)
 
 # struct used when sorting probabilities during top-p sampling
 @dataclass
@@ -119,6 +116,7 @@ class RunState:
         # kv cache
         self.key_cache = _new_tensor(ctx, (config.n_layers, config.seq_len, config.dim), tensor_type)
         self.value_cache = _new_tensor(ctx, (config.n_layers, config.seq_len, config.dim), tensor_type)
+        self.cache_length = 0
 
         self.probindex = [ProbIndex(-1.0, -1) for i in range(config.vocab_size)]
 
@@ -156,7 +154,6 @@ def info(name, t):
     print(f'{name} {describe(t)}')
     pass
 
-# LLAMA_USE_SCRATCH=False
 def use_buf(ctx, i: int):
     pass
     #     if LLAMA_USE_SCRATCH:
@@ -205,25 +202,29 @@ def llama_build_graph(p: Config, s: RunState, w: TransformerWeights, tokens: Opt
     assert tokens
     # assert len(tokens) == 1
 
-    content_row_ = w.token_embedding_table_[tokens[-1], :]
-    assert content_row_.shape == (p.dim,)
-    inpL = lib.ggml_new_tensor_2d(ctx0, lib.GGML_TYPE_F32, p.dim, N)
-    copy(content_row_.reshape((p.dim, N)), inpL)
+    # content_row_ = w.token_embedding_table_[tokens[-1], :]
+    # assert content_row_.shape == (p.dim,)
+    # inpL = lib.ggml_new_tensor_2d(ctx0, lib.GGML_TYPE_F32, p.dim, N)
+    # copy(content_row_.reshape((p.dim, N)), inpL)
 
-    # if tokens:
-    #     inp_tokens = lib.ggml_new_tensor_1d(ctx0, lib.GGML_TYPE_I32, N)
-    #     ffi.memmove(inp_tokens.data, np.array(tokens, dtype=int), N*lib.ggml_element_size(inp_tokens))
-    #     print(numpy(inp_tokens))
+    if tokens:
+        inp_tokens = lib.ggml_new_tensor_1d(ctx0, lib.GGML_TYPE_I32, N)
+        copy(np.array(tokens, dtype=np.int32), inp_tokens)
+        # ffi.memmove(inp_tokens.data, np.array(tokens, dtype=int), N*lib.ggml_element_size(inp_tokens))
+        # assert (np.array(tokens, dtype=np.int32) == numpy(inp_tokens)).all()
+        # print(numpy(inp_tokens))
 
-    #     info("w.token_embedding_table", w.token_embedding_table)
-    #     inpL = lib.ggml_get_rows(ctx0, lib.ggml_transpose(ctx0, w.token_embedding_table), inp_tokens)
-    #     info("inpL", inpL)
-    #     # assert 
-    # else:
-    #     inpL = lib.ggml_new_tensor_2d(ctx0, lib.GGML_TYPE_F32, n_embd, N)
+        # info("w.token_embedding_table", w.token_embedding_table)
+        #inpL = lib.ggml_get_rows(ctx0, lib.ggml_transpose(ctx0, w.token_embedding_table), inp_tokens)
+        inpL = lib.ggml_get_rows(ctx0, w.token_embedding_table, inp_tokens)
+        # info("inpL", inpL)
+        # assert 
+    else:
+        inpL = lib.ggml_new_tensor_2d(ctx0, lib.GGML_TYPE_F32, n_embd, N)
 
-    #     ffi.memmove(inpL.data, ffi.frombuffer(embd), N * n_embd * lib.ggml_element_size(inpL))
+        ffi.memmove(inpL.data, ffi.frombuffer(embd), N * n_embd * lib.ggml_element_size(inpL))
 
+    assert _get_shape(inpL) == (n_embd, N), f'Bad input shape: {_get_shape(inpL)} != {(n_embd, N)}'
 
     KQ_scale = lib.ggml_new_tensor_1d(ctx0, lib.GGML_TYPE_F32, 1)
     lib.ggml_set_f32(KQ_scale, 1.0/math.sqrt(float(n_embd)/n_head))
@@ -430,29 +431,28 @@ def bpe_encode(text: str, v: Vocabulary) -> list[int]:
 
     return tokens
 
-def read_tensor(name: str, f, tensor: ffi.CData, permute=False):
+def read_tensor(name: str, f, tensor: ffi.CData):
     shape = tuple([tensor.ne[i] for i in range(tensor.n_dims)])
     nbytes = np.prod(shape) * ffi.sizeof('float')
     array = np.frombuffer(f.read(nbytes), dtype=np.float32).reshape(shape)
-    # if permute: array = np.ascontiguousarray(np.transpose(array)).reshape(shape)
     copy(array, tensor)
 
 def checkpoint_init_weights(mm, p: Config, w: TransformerWeights):
     read_tensor("token_embedding_table", mm, w.token_embedding_table)
     for i in range(p.n_layers): read_tensor(f'{w.rms_att_weight[i]}', mm, w.rms_att_weight[i])
-    for i in range(p.n_layers): read_tensor(f'{w.wq[i]}', mm, w.wq[i], permute=True)
-    for i in range(p.n_layers): read_tensor(f'{w.wk[i]}', mm, w.wk[i], permute=True)
-    for i in range(p.n_layers): read_tensor(f'{w.wv[i]}', mm, w.wv[i], permute=True)
-    for i in range(p.n_layers): read_tensor(f'{w.wo[i]}', mm, w.wo[i], permute=True)
-    for i in range(p.n_layers): read_tensor(f'{w.rms_ffn_weight[i]}', mm, w.rms_ffn_weight[i], permute=True)
-    for i in range(p.n_layers): read_tensor(f'{w.w1[i]}', mm, w.w1[i], permute=True)
-    for i in range(p.n_layers): read_tensor(f'{w.w2[i]}', mm, w.w2[i], permute=True)
-    for i in range(p.n_layers): read_tensor(f'{w.w3[i]}', mm, w.w3[i], permute=True)
+    for i in range(p.n_layers): read_tensor(f'{w.wq[i]}', mm, w.wq[i])
+    for i in range(p.n_layers): read_tensor(f'{w.wk[i]}', mm, w.wk[i])
+    for i in range(p.n_layers): read_tensor(f'{w.wv[i]}', mm, w.wv[i])
+    for i in range(p.n_layers): read_tensor(f'{w.wo[i]}', mm, w.wo[i])
+    for i in range(p.n_layers): read_tensor(f'{w.rms_ffn_weight[i]}', mm, w.rms_ffn_weight[i])
+    for i in range(p.n_layers): read_tensor(f'{w.w1[i]}', mm, w.w1[i])
+    for i in range(p.n_layers): read_tensor(f'{w.w2[i]}', mm, w.w2[i])
+    for i in range(p.n_layers): read_tensor(f'{w.w3[i]}', mm, w.w3[i])
     read_tensor('rms_final_weight', mm, w.rms_final_weight)
     read_tensor('freq_cis_real', mm, w.freq_cis_real)
     read_tensor('freq_cis_imag', mm, w.freq_cis_imag)
     if w.shared_weights:
-        copy(np.ascontiguousarray(w.token_embedding_table_.transpose()), w.wcls_)
+        copy(np.ascontiguousarray(numpy(w.token_embedding_table).transpose()), w.wcls)
     else:
         read_tensor('wcls', mm, w.wcls)
 
@@ -572,7 +572,7 @@ def llama_eval(p: Config, s: RunState, w: TransformerWeights, tokens: Optional[l
             #
             # TODO: avoid these syncs via shared memory (ref #1696)
             #
-            if sctx_metal:
+            if s.ctx_metal:
                 # We need to sync the GPU KV cache with the CPU KV cache
                 lib.ggml_metal_get_tensor(s.ctx_metal, kv_self.k)
                 lib.ggml_metal_get_tensor(s.ctx_metal, kv_self.v)
@@ -620,12 +620,15 @@ def run(
         tokenizer_model: Path,
         prompt: Optional[str] = None,
         steps: int = 128,
-        temperature: float = 0.0,
-        # temperature: float = 1.0,
+        # temperature: float = 0.0,
+        temperature: float = 1.0,
         seed: Optional[int] = None,
         auto_stop = True,
+        debug = True,
         n_threads: int = 8,
         topp: float = 0.9): # top-p in nucleus sampling
+
+    if debug: debug_ggml_asserts()
 
     np.random.seed(seed)
 
@@ -640,7 +643,7 @@ def run(
 
     ctx = init(mem_size=100*1024*1024*1024)
 
-    # type = lib.GGML_TYPE_Q5_K
+    # tensor_type = lib.GGML_TYPE_Q5_K
     tensor_type = lib.GGML_TYPE_F32
 
     weights = TransformerWeights(config, ctx, tensor_type, shared_weights)
@@ -651,6 +654,10 @@ def run(
 
     vocab = read_vocab(tokenizer_model, config)
     state = RunState(config, ctx, tensor_type)
+
+    # if GGML_USE_METAL:
+    #     state.ctx_metal = lib.ggml_metal_init(1)
+    #     lib.ggml_metal_add_buffer(state.ctx_metal, "data", data_ptr, data_size, max_size)
 
     # process the prompt, if any
     prompt_tokens = None
@@ -667,26 +674,20 @@ def run(
     
     # init with BOS, as done in Llama-2 sentencepiece tokenizer
     token = llama_token_bos()
-    # embd = [llama_token_bos()] + (prompt_tokens or [])# if prompt_tokens else [1]
 
-    # n_batch = 1
-    # n_past = 0
-    # for i in range(0, len(embd), n_batch):
-    #     n_eval = math.min(len(embd.size) - i, n_batch)
-    #     if n_eval > n_batch:
-    #         n_eval = n_batch
-            
-    #     (logits, embeddings) = llama_eval(config, state, weights, embd, None, n_eval, n_past, n_threads)
-    #     n_past += n_eval
-
-    # embd = []
+    # if prompt_tokens:
+    #     prompt_tokens.insert(0, token)
+    #     llama_eval(config, state, weights, prompt_tokens, None, n_tokens=len(prompt_tokens), n_past=pos, n_threads=n_threads)
+    #     pos += len(prompt_tokens) - 1
+    #     sys.stdout.write(''.join([vocab.vocab[t] for t in prompt_tokens[1:]]))
+    #     sys.stdout.flush()
+    #     token = prompt_tokens[-1]
+    #     # token = llama_token_bos()
 
     while (pos < steps):
 
         (logits, embeddings) = llama_eval(config, state, weights, [token], None, n_tokens=1, n_past=pos, n_threads=n_threads)
         
-        # logits = numpy(transformer(context, token, pos, config, state, weights)).transpose()
-
         # advance the state state machine
         if(pos < (len(prompt_tokens) if prompt_tokens else 0)):
             # if we are still processing the input prompt, force the next prompt token
