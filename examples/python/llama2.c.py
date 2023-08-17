@@ -685,6 +685,7 @@ def run(
     #     # token = llama_token_bos()
 
     while (pos < steps):
+        assert pos < config.seq_len, f'pos {pos} >= seq_len {config.seq_len} (TODO: add support for context compression)'
 
         (logits, embeddings) = llama_eval(config, state, weights, [token], None, n_tokens=1, n_past=pos, n_threads=n_threads)
         
