@@ -107,29 +107,24 @@ def debug_str(x):
 @ctypes.CFUNCTYPE(None, ctypes.c_int)
 def __sigabrt_handler(sig):
     print('SIGABRT handled!')
-    curr_frame = sys._getframe(1)
 
-    def accept(visitor):
-        for fi in inspect.getouterframes(curr_frame):
-            visitor(fi.frame, fi.function)
-        traceback = inspect.getframeinfo(curr_frame)
-        visitor(curr_frame, traceback.function)
-        
+    stack = inspect.getouterframes(sys._getframe(1))
+    stack.reverse()
+
     def print_stack():
-        def print_frame(frame, function):
-            print(f'\n  File "{frame.f_code.co_filename}", line {frame.f_lineno}, in {function}')
-            for k, v in frame.f_locals.items():
+        for fi in stack:
+            print(f'\n  File "{fi.frame.f_code.co_filename}", line {fi.frame.f_lineno}, in {fi.function}')
+            for k, v in fi.frame.f_locals.items():
                 symbols[k] = v
                 s = debug_str(v)
                 if len(s) > 400: s = s[:400] + '...'
                 print(f'    {k}: {s}')
-        accept(print_frame)
     
     symbols = {}
-    def collect_locals(frame, function):
-        for k, v in frame.f_locals.items(): symbols[k] = v
-    accept(collect_locals)
+    for fi in stack:
+        for k, v in fi.frame.f_locals.items(): symbols[k] = v
     symbols['print_stack'] = print_stack
+    symbols['debug_str'] = debug_str
 
     import code
     code.interact('Debug Console (call print_stack() to display current stack and locals)', local=symbols)
