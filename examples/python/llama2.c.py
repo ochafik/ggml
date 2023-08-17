@@ -11,7 +11,7 @@ import os; os.environ['GGML_LIBRARY'] = '/tmp/llama_release/libggml_shared.dylib
 # python llama2.c.py ~/AI/Models/llama2.c.stories15M.bin ../../../llama2.c/tokenizer.bin --prompt "Hello, world"
 
 from ggml import lib, ffi
-from ggml.utils import init, numpy, copy, describe, debug_ggml_asserts
+from ggml.utils import init, numpy, copy, debug_ggml_asserts
 import numpy as np
 from dataclasses import dataclass
 from typing import List, Tuple, Optional, Union, Dict, Any, Callable, TypeVar, Generic
@@ -26,32 +26,11 @@ LLAMA_USE_ALLOCATOR=False
 GGML_USE_METAL = os.environ.get('GGML_USE_METAL', '0') == '1'
 LLAMA_USE_SCRATCH = os.environ.get('LLAMA_USE_SCRATCH', '0') == '1'
 
-# # Define lib.* symbols in the global namespace:
-# for name in dir(lib):
-#     if re.search(r'_(cl|mpi|cuda|cublas)(_|$)', name): continue
-#     globals()[name] = getattr(lib, name)
-
 Tensor = ffi.CData
 Context = ffi.CData
 TensorLike = Union[Tensor, np.ndarray]
 
-__tensor_factories = {
-    1: lib.ggml_new_tensor_1d,
-    2: lib.ggml_new_tensor_2d,
-    3: lib.ggml_new_tensor_3d,
-    4: lib.ggml_new_tensor_4d,
-}
-
 def _get_shape(x: TensorLike): return x.shape if isinstance(x, np.ndarray) else tuple([x.ne[i] for i in range(x.n_dims)])
-
-def _new_tensor(ctx, shape, type):
-    factory = __tensor_factories[len(shape)]
-    if factory:
-        return factory(ctx, type, *shape)
-
-    dims = ffi.new('int[]', len(shape))
-    for i, dim in enumerate(shape): dims[i] = dim
-    return lib.ggml_new_tensor(ctx, type, len(shape), dims)
 
 # ----------------------------------------------------------------------------
 # Transformer, RunState and Vocabulary structs, and related memory management
@@ -72,26 +51,26 @@ class Config:
 class TransformerWeights:
     def __init__(self, p: Config, ctx: Context, type: int, shared_weights: bool):
         # token embedding table
-        self.token_embedding_table = _new_tensor(ctx, (p.dim, p.vocab_size), type)
+        self.token_embedding_table = lib.ggml_new_tensor_2d(ctx, type, p.dim, p.vocab_size)
         # weights for rmsnorms
-        self.rms_att_weight = [_new_tensor(ctx, (p.dim,), type) for _ in range(p.n_layers)]
-        self.rms_ffn_weight = [_new_tensor(ctx, (p.dim,), type) for _ in range(p.n_layers)]
+        self.rms_att_weight = [lib.ggml_new_tensor_1d(ctx, type, p.dim) for _ in range(p.n_layers)]
+        self.rms_ffn_weight = [lib.ggml_new_tensor_1d(ctx, type, p.dim) for _ in range(p.n_layers)]
         # weights for matmuls
-        self.wq = [_new_tensor(ctx, (p.dim, p.dim), type) for _ in range(p.n_layers)]
-        self.wk = [_new_tensor(ctx, (p.dim, p.dim), type) for _ in range(p.n_layers)]
-        self.wv = [_new_tensor(ctx, (p.dim, p.dim), type) for _ in range(p.n_layers)]
-        self.wo = [_new_tensor(ctx, (p.dim, p.dim), type) for _ in range(p.n_layers)]
+        self.wq = [lib.ggml_new_tensor_2d(ctx, type, p.dim, p.dim) for _ in range(p.n_layers)]
+        self.wk = [lib.ggml_new_tensor_2d(ctx, type, p.dim, p.dim) for _ in range(p.n_layers)]
+        self.wv = [lib.ggml_new_tensor_2d(ctx, type, p.dim, p.dim) for _ in range(p.n_layers)]
+        self.wo = [lib.ggml_new_tensor_2d(ctx, type, p.dim, p.dim) for _ in range(p.n_layers)]
         # weights for ffn
-        self.w1 = [_new_tensor(ctx, (p.dim, p.hidden_dim), type) for _ in range(p.n_layers)]
-        self.w2 = [_new_tensor(ctx, (p.hidden_dim, p.dim), type) for _ in range(p.n_layers)]
-        self.w3 = [_new_tensor(ctx, (p.dim, p.hidden_dim), type) for _ in range(p.n_layers)]
+        self.w1 = [lib.ggml_new_tensor_2d(ctx, type, p.dim, p.hidden_dim) for _ in range(p.n_layers)]
+        self.w2 = [lib.ggml_new_tensor_2d(ctx, type, p.hidden_dim, p.dim) for _ in range(p.n_layers)]
+        self.w3 = [lib.ggml_new_tensor_2d(ctx, type, p.dim, p.hidden_dim) for _ in range(p.n_layers)]
         # final rmsnorm
-        self.rms_final_weight = _new_tensor(ctx, (p.dim,), type)
+        self.rms_final_weight = lib.ggml_new_tensor_1d(ctx, type, p.dim)
         # freq_cis for RoPE relatively positional embeddings
-        self.freq_cis_real = _new_tensor(ctx, (p.seq_len, p.head_size // 2), type)
-        self.freq_cis_imag = _new_tensor(ctx, (p.seq_len, p.head_size // 2), type)
+        self.freq_cis_real = lib.ggml_new_tensor_2d(ctx, type, p.seq_len, p.head_size // 2)
+        self.freq_cis_imag = lib.ggml_new_tensor_2d(ctx, type, p.seq_len, p.head_size // 2)
         # (optional) classifier weights for the logits, on the last layer
-        self.wcls = _new_tensor(ctx, (p.dim, p.vocab_size), type)
+        self.wcls = lib.ggml_new_tensor_2d(ctx, type, p.dim, p.vocab_size)
         self.shared_weights = shared_weights
 
 
@@ -105,32 +84,12 @@ class ProbIndex:
 @dataclass
 class RunState:
     def __init__(self, config: Config, ctx: int, tensor_type: int):
-        # activation at current time stamp (dim,)
-        self.x = _new_tensor(ctx, (config.dim,), tensor_type)
-        # same, but inside a residual branch (dim,)
-        self.xb = _new_tensor(ctx, (config.dim,), tensor_type)
-         # an additional buffer just for convenience (dim,)
-        self.xb2 = _new_tensor(ctx, (config.dim,), tensor_type)
-        # buffer for scores/attention values
-        self.att = _new_tensor(ctx, (config.n_heads, config.seq_len), tensor_type)
         # kv cache
-        self.key_cache = _new_tensor(ctx, (config.n_layers, config.seq_len, config.dim), tensor_type)
-        self.value_cache = _new_tensor(ctx, (config.n_layers, config.seq_len, config.dim), tensor_type)
+        self.key_cache = lib.ggml_new_tensor_3d(ctx, tensor_type, config.n_layers, config.seq_len, config.dim)
+        self.value_cache = lib.ggml_new_tensor_3d(ctx, tensor_type, config.n_layers, config.seq_len, config.dim)
         self.cache_length = 0
 
         self.probindex = [ProbIndex(-1.0, -1) for i in range(config.vocab_size)]
-
-        # numpy array views of each tensor
-        self.x_ = numpy(self.x)
-        self.xb_ = numpy(self.xb)
-        self.xb_heads_ = self.xb_.reshape(config.n_heads, config.head_size)
-        self.xb2_ = numpy(self.xb2)
-        self.att_ = numpy(self.att)
-        self.key_cache_ = numpy(self.key_cache)
-        self.value_cache_ = numpy(self.value_cache)
-        # Split these by heads for convenience
-        self.key_cache_heads_ = self.key_cache_.reshape(config.n_layers, config.seq_len, config.n_heads, config.head_size)
-        self.value_cache_heads_ = self.value_cache_.reshape(config.n_layers, config.seq_len, config.n_heads, config.head_size)
 
 @dataclass
 class TokenIndex:
@@ -164,7 +123,7 @@ def llama_build_graph(p: Config, s: RunState, w: TransformerWeights, tokens: Opt
     n_head_kv = p.n_kv_heads
     
     params = ffi.new('struct ggml_init_params*')
-    params.mem_size = 102*1024*1024
+    params.mem_size = 100*1024*1024
     params.mem_buffer = ffi.NULL
     params.no_alloc = False
     ctx0 = lib.ggml_init(params[0])
