@@ -145,12 +145,12 @@ class LlamaContext:
         self.p = p
         self.w = w
 
-        self.scratch_size = 100*1024*1024
+        self.scratch_size = 500*1024*1024
         self.buf_scratch = [ffi.new('char[]', self.scratch_size) for _ in range(2)]
         self.buf_scratch_max_size = [0 for _ in self.buf_scratch]
         self.buf_last = 0
 
-        self.work_buffer = ffi.new('char[]', 10*1024*1024)
+        self.work_buffer = ffi.new('char[]', 500*1024*1024)
 
         # if GGML_USE_METAL:
         #     self.ctx_metal = lib.ggml_metal_init(1)
@@ -252,7 +252,7 @@ class LlamaContext:
         n_head_kv = p.n_kv_heads
         
         params = ffi.new('struct ggml_init_params*')
-        params.mem_size = 10*1024*1024
+        params.mem_size = 500*1024*1024
         params.mem_buffer = ffi.NULL
         params.no_alloc = False
         ctx0 = lib.ggml_init(params[0])
@@ -593,7 +593,7 @@ def run(
 
     print(config)
 
-    ctx = init(mem_size=1024*1024*1024)
+    ctx = init(mem_size=30*1024*1024*1024)
 
     # tensor_type = lib.GGML_TYPE_Q5_K
     tensor_type = lib.GGML_TYPE_F32
