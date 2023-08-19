@@ -1,6 +1,16 @@
 # auto-generated file
 import ggml.ffi as ffi
 import numpy as np
+from typing import Union
+
+class ffi:
+  def typeof(x) -> ffi.CType: ...
+  def new(type: ffi.CType, *args, **kwargs) -> ffi.CData: ...
+  def cast(type: Union[ffi.CType, str], data: ffi.CData) -> ffi.CData: ...
+  def from_buffer(data: Union[bytes, bytearray, memoryview]) -> ffi.CData: ...
+  def buffer(data: ffi.CData, size: int) -> Union[bytes, bytearray, memoryview]: ...
+  def string(data: ffi.CData) -> str: ...
+
 class lib:
   @property
   def GGML_BACKEND_CPU(self) -> int: ...
@@ -401,6 +411,14 @@ class lib:
   def ggml_allocr_reset(alloc: ffi.CData) -> None:
     """GGML_API void   ggml_allocr_reset(struct ggml_allocr * alloc);"""
     ...
+  def ggml_allocr_set_parse_seq(alloc: ffi.CData, list: ffi.CData, n: int) -> None:
+    """
+    tell the allocator to parse nodes following the order described in the list
+    you should call this if your graph are optimized to execute out-of-order
+
+    GGML_API void   ggml_allocr_set_parse_seq(struct ggml_allocr * alloc, int * list, int n);
+    """
+    ...
   def ggml_are_same_shape(t0: ffi.CData, t1: ffi.CData) -> bool:
     """    GGML_API bool ggml_are_same_shape(const struct ggml_tensor * t0, const struct ggml_tensor * t1);"""
     ...
@@ -687,16 +705,6 @@ class lib:
                 struct ggml_context * ctx,
                 struct ggml_tensor  * a,
                 int                   n_past);
-    """
-    ...
-  def ggml_diag_mask_inf_dyn(ctx: ffi.CData, a: ffi.CData, n_past: ffi.CData) -> ffi.CData:
-    """
-    takes n_past as an int scalar tensor
-
-        GGML_API struct ggml_tensor * ggml_diag_mask_inf_dyn(
-                struct ggml_context * ctx,
-                struct ggml_tensor  * a,
-                struct ggml_tensor  * n_past);
     """
     ...
   def ggml_diag_mask_inf_inplace(ctx: ffi.CData, a: ffi.CData, n_past: int) -> ffi.CData:
@@ -1202,6 +1210,13 @@ class lib:
   def ggml_metal_free(ctx: ffi.CData) -> None:
     """void ggml_metal_free(struct ggml_metal_context * ctx);"""
     ...
+  def ggml_metal_get_concur_list(ctx: ffi.CData) -> ffi.CData:
+    """
+    output the concur_list for ggml_alloc
+
+    int * ggml_metal_get_concur_list(struct ggml_metal_context * ctx);
+    """
+    ...
   def ggml_metal_get_tensor(ctx: ffi.CData, t: ffi.CData) -> None:
     """
     get data from the device into host memory
@@ -1217,19 +1232,19 @@ class lib:
     void ggml_metal_graph_compute(struct ggml_metal_context * ctx, struct ggml_cgraph * gf);
     """
     ...
-  def ggml_metal_graph_find_concurrency(ctx: ffi.CData, gf: ffi.CData) -> None:
+  def ggml_metal_graph_find_concurrency(ctx: ffi.CData, gf: ffi.CData, check_mem: bool) -> None:
     """
     try to find operations that can be run concurrently in the graph
     you should run it again if the topology of your graph changes
 
-    void ggml_metal_graph_find_concurrency(struct ggml_metal_context * ctx, struct ggml_cgraph * gf);
+    void ggml_metal_graph_find_concurrency(struct ggml_metal_context * ctx, struct ggml_cgraph * gf, bool check_mem);
     """
     ...
-  def ggml_metal_if_optimized(ctx: ffi.CData) -> bool:
+  def ggml_metal_if_optimized(ctx: ffi.CData) -> int:
     """
-    if the graph has been optimized for concurrently dispatch
+    if the graph has been optimized for concurrently dispatch, return length of the concur_list if optimized
 
-    bool ggml_metal_if_optimized(struct ggml_metal_context * ctx);
+    int ggml_metal_if_optimized(struct ggml_metal_context * ctx);
     """
     ...
   def ggml_metal_init(n_cb: int) -> ffi.CData:
@@ -1740,21 +1755,6 @@ class lib:
                 struct ggml_context * ctx,
                 struct ggml_tensor  * a,
                 int                   n_past,
-                int                   n_dims,
-                int                   mode,
-                int                   n_ctx,
-                float                 freq_base,
-                float                 freq_scale);
-    """
-    ...
-  def ggml_rope_custom_inplace_dyn(ctx: ffi.CData, a: ffi.CData, n_past: ffi.CData, n_dims: int, mode: int, n_ctx: int, freq_base: float, freq_scale: float) -> ffi.CData:
-    """
-    in-place, returns view(a)
-
-        GGML_API struct ggml_tensor * ggml_rope_custom_inplace_dyn(
-                struct ggml_context * ctx,
-                struct ggml_tensor  * a,
-                struct ggml_tensor  * n_past, // an i32 scalar tensor
                 int                   n_dims,
                 int                   mode,
                 int                   n_ctx,

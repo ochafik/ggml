@@ -2,10 +2,10 @@
 # https://github.com/karpathy/llama2.c/blob/master/run.c
 # Use faster tokenization, and naively allocate buffers in GGML / wrap them to numpy
 
-# rm -fR /tmp/llama_release ; cmake ../../../llama.cpp -B /tmp/llama_release -DCMAKE_C_FLAGS=-Ofast -DLLAMA_NATIVE=1 -DLLAMA_LTO=1 -DLLAMA_METAL=1 -DBUILD_SHARED_LIBS=1 -DLLAMA_BUILD_EXAMPLES=0 -DLLAMA_BUILD_TESTS=0 -DCMAKE_BUILD_TYPE=Release && ( cd /tmp/llama_release && make -j )
+# rm -fR /tmp/llama_release ; cmake ../../../llama.cpp -B /tmp/llama_release -DCMAKE_C_FLAGS=-Ofast -DLLAMA_NATIVE=1 -DLLAMA_LTO=1 -DLLAMA_METAL=1 -DBUILD_SHARED_LIBS=1 -DLLAMA_BUILD_EXAMPLES=0 -DLLAMA_BUILD_TESTS=0 -DCMAKE_BUILD_TYPE=Release && ( cd /tmp/llama_release && make -j ) && cp ../../../llama.cpp/ggml-metal.metal /tmp/llama_release/
 import os; os.environ['GGML_LIBRARY'] = '/tmp/llama_release/libggml_shared.dylib'
 
-# rm -fR /tmp/llama_debug ; cmake ../../../llama.cpp -B /tmp/llama_debug -DLLAMA_METAL=1 -DBUILD_SHARED_LIBS=1 -DLLAMA_BUILD_EXAMPLES=0 -DLLAMA_BUILD_TESTS=0 -DCMAKE_BUILD_TYPE=Debug && ( cd /tmp/llama_debug && make -j )
+# rm -fR /tmp/llama_debug ; cmake ../../../llama.cpp -B /tmp/llama_debug -DLLAMA_METAL=1 -DBUILD_SHARED_LIBS=1 -DLLAMA_BUILD_EXAMPLES=0 -DLLAMA_BUILD_TESTS=0 -DCMAKE_BUILD_TYPE=Debug && ( cd /tmp/llama_debug && make -j ) && cp ../../../llama.cpp/ggml-metal.metal /tmp/llama_debug/
 # import os; os.environ['GGML_LIBRARY'] = '/tmp/llama_debug/libggml_shared.dylib'
 
 # python llama2.c.py ~/AI/Models/llama2.c.stories15M.bin ../../../llama2.c/tokenizer.bin --prompt "Hello, world"
@@ -21,18 +21,34 @@ import struct, os, mmap, math, sys, time, bisect
 from collections import namedtuple
 import scipy as sp
 
-GGML_USE_MPI=False
-LLAMA_USE_ALLOCATOR=False
-GGML_USE_METAL = os.environ.get('GGML_USE_METAL', '0') == '1'
+MMAP = os.environ.get('MMAP', '0') == '1'
+ALLOC = os.environ.get('ALLOC', '0') == '1'
+METAL = os.environ.get('METAL', '0') == '1'
 
 Tensor = ffi.CData
-Context = ffi.CData
 TensorLike = Union[Tensor, np.ndarray]
+
+GGML_MAX_NODES = 4096
+
+_eternal_cstrs = {}
+def _const_cstr(s: str):
+    cstr = _eternal_cstrs.get(s)
+    if cstr is None:
+        cstr = ffi.new('char[]', s)
+        _eternal_cstrs[s] = cstr
+    return cstr
 
 def _get_shape(x: TensorLike): return x.shape if isinstance(x, np.ndarray) else tuple([x.ne[i] for i in range(x.n_dims)])
 
+class AlignedBuf:
+    def __init__(self, size: int, alignment=4096):
+        self.size = size
+        self.raw_ptr = ffi.new('char[]', size + alignment - 1)
+        addr = int(ffi.cast('size_t', self.raw_ptr))
+        self.ptr = ffi.cast('char*', addr + (alignment - (addr % alignment)))
+
 # ----------------------------------------------------------------------------
-# Transformer, RunState and Vocabulary structs, and related memory management
+# Transformer, KVCache and Vocabulary structs, and related memory management
 
 @dataclass
 class Config:
@@ -46,11 +62,19 @@ class Config:
 
     @property
     def head_size(self): return self.dim // self.n_heads
+    @property
+    def n_embd_gqa(self): return self.dim // self.n_gqa
+    @property
+    def n_gqa(self): return self.n_heads // self.n_kv_heads
 
-class TransformerWeights:
-    def __init__(self, p: Config, ctx: Context, type: int, shared_weights: bool):
+class LlamaWeights:
+    def __init__(self, p: Config, type: int, shared_weights: bool):
+        self.ctx = init(mem_size=30*1024*1024*1024)
+        ctx = self.ctx
+    
         # token embedding table
         self.token_embedding_table = lib.ggml_new_tensor_2d(ctx, type, p.dim, p.vocab_size)
+
         # weights for rmsnorms
         self.rms_att_weight = [lib.ggml_new_tensor_1d(ctx, type, p.dim) for _ in range(p.n_layers)]
         self.rms_ffn_weight = [lib.ggml_new_tensor_1d(ctx, type, p.dim) for _ in range(p.n_layers)]
@@ -79,16 +103,25 @@ class ProbIndex:
     prob: float
     index: int
 
-# current wave of activations
 @dataclass
-class RunState:
-    def __init__(self, config: Config, ctx: int, tensor_type: int):
-        # kv cache
-        self.key_cache = lib.ggml_new_tensor_3d(ctx, tensor_type, config.n_layers, config.seq_len, config.dim)
-        self.value_cache = lib.ggml_new_tensor_3d(ctx, tensor_type, config.n_layers, config.seq_len, config.dim)
-        self.cache_length = 0
+class KVCache:
+    def __init__(self, p: Config, type: int):
+        self.buf = AlignedBuf(
+                    2 * ( \
+                        lib.ggml_tensor_overhead() + \
+                        p.n_layers * p.seq_len * p.n_embd_gqa * lib.ggml_type_size(type)))
+        params = ffi.new('struct ggml_init_params*')
+        params.mem_size = self.buf.size
+        params.mem_buffer = self.buf.ptr
+        params.no_alloc = False
+        self.ctx = lib.ggml_init(params[0])
+        assert self.ctx
 
-        self.probindex = [ProbIndex(-1.0, -1) for i in range(config.vocab_size)]
+        self.k = lib.ggml_new_tensor_3d(self.ctx, type, p.n_layers, p.seq_len, p.n_embd_gqa)
+        self.v = lib.ggml_new_tensor_3d(self.ctx, type, p.n_layers, p.seq_len, p.n_embd_gqa)
+        lib.ggml_set_name(self.k, _const_cstr(b"cache_k\0"))
+        lib.ggml_set_name(self.v, _const_cstr(b"cache_v\0"))
+        self.cache_length = 0
 
 @dataclass
 class TokenIndex:
@@ -141,31 +174,106 @@ class GraphResult:
     argmax: Optional[Tensor] = None
 
 class LlamaContext:
-    def __init__(self, p: Config, w: TransformerWeights):
+    def __init__(self, p: Config, kv_cache: KVCache, model: LlamaWeights):
         self.p = p
-        self.w = w
+        self.kv_self = kv_cache
+        self.model = model
+    
+        self.work_buffer = ffi.NULL
 
-        self.scratch_size = 500*1024*1024
-        self.buf_scratch = [ffi.new('char[]', self.scratch_size) for _ in range(2)]
-        self.buf_scratch_max_size = [0 for _ in self.buf_scratch]
-        self.buf_last = 0
+        if METAL:
+            self.ctx_metal = lib.ggml_metal_init(1)
+            assert self.ctx_metal, "ggml_metal_init() failed"
 
-        self.work_buffer = ffi.new('char[]', 500*1024*1024)
-        self.tmp_ggml_scratch = ffi.new('struct ggml_scratch*')
+        if ALLOC:
+            tensor_alignment = 32
+            # the compute buffer is used to store the tensor and graph structs, while the allocator buffer is used for the tensor data
+            self.buf_compute = AlignedBuf(lib.ggml_tensor_overhead() * GGML_MAX_NODES + lib.ggml_graph_overhead())
 
-        # if GGML_USE_METAL:
-        #     self.ctx_metal = lib.ggml_metal_init(1)
+            # create measure allocator
+            self.alloc = lib.ggml_allocr_new_measure(tensor_alignment)
+
+            # build worst-case graph
+            result = self.llama_build_graph(EvalParams(
+                all_logits=False, temperature=1.0,
+                n_threads=1, n_past=0,
+                tokens=[llama_token_bos() for _ in range(p.seq_len)]))
+            
+            if METAL and self.ctx_metal:
+                lib.ggml_metal_graph_find_concurrency(self.ctx_metal, result.graph, False)
+                self.allocr_set_metal_parse_seq()
+
+            # measure memory requirements for the graph
+            alloc_size = lib.ggml_allocr_alloc_graph(self.alloc, result.graph) + tensor_alignment
+            print(f'alloc_size: {alloc_size}')
+            print(f'buf_compute.size: {self.buf_compute.size}')
+
+            # recreate allocator with exact memory requirements
+            lib.ggml_allocr_free(self.alloc)
+
+            self.buf_alloc = AlignedBuf(alloc_size)
+            self.alloc = lib.ggml_allocr_new(self.buf_alloc.ptr, alloc_size, tensor_alignment)
+            
+            if METAL and self.ctx_metal:
+                self.allocr_set_metal_parse_seq()
+        else:
+            self.alloc = None
+
+            self.scratch_size = 500*1024*1024
+            # self.scratch_size = 1024*1024*1024
+            # We have 1 more scratch buffer than traditional llama.cpp because of the early exit in the last layer
+            self.buf_scratch = [AlignedBuf(self.scratch_size) for _ in range(3)]
+            self.buf_scratch_max_size = [0 for _ in self.buf_scratch]
+            self.buf_last = 0
+
+            # ffi.new('char[]', 500*1024*1024)
+            # self.work_buffer = ffi.new('char[]', 1024*1024*1024)
+            self.tmp_ggml_scratch = ffi.new('struct ggml_scratch*')
+
+        if METAL and self.ctx_metal:
+            if MMAP:
+                self.add_buf_to_metal("data", model.mapping)
+            else:
+                self.add_ctx_to_metal("data", model.ctx, use_max_tensor_size=True)
+            self.add_buf_to_metal("eval", self.buf_compute)
+            self.add_buf_to_metal("kv", self.kv_self.buf)
+            self.add_buf_to_metal("alloc", self.buf_alloc)
+            # self.add_buf_to_metal("work", self.work_buffer)
+
+    def allocr_set_metal_parse_seq(self):
+        lib.ggml_allocr_set_parse_seq(self.alloc, lib.ggml_metal_get_concur_list(self.ctx_metal), lib.ggml_metal_if_optimized(self.ctx_metal))
+                
+    def add_buf_to_metal(self, name: str, buf: AlignedBuf):
+        lib.ggml_metal_add_buffer(self.ctx_metal,
+                                  _const_cstr(name.encode()),
+                                  buf.ptr, buf.size, 0)
+
+    def add_ctx_to_metal(self, name: str, ctx, use_max_tensor_size=False):
+        mem_buffer = lib.ggml_get_mem_buffer(ctx)
+        mem_size = lib.ggml_get_mem_size(ctx)
+        max_tensor_size = lib.ggml_get_max_tensor_size(ctx)
+        assert mem_buffer != ffi.NULL and mem_size > 0
+        lib.ggml_metal_add_buffer(self.ctx_metal, _const_cstr(name.encode()),
+                                    mem_buffer,
+                                    mem_size,
+                                    max_tensor_size if use_max_tensor_size else 0)
 
     def ggml_graph_compute_helper(self, graph, n_threads: int):
+        # print(f'n_threads: {n_threads}')
         plan = lib.ggml_graph_plan(graph, n_threads)
 
         if plan.work_size > 0:
-            assert ffi.sizeof(self.work_buffer) >= plan.work_size, f'Plan buffer too small: {ffi.sizeof(self.work_buffer)} < {plan.work_size}'
+            # assert ffi.sizeof(self.work_buffer) >= plan.work_size, f'work_size: {plan.work_size} > {ffi.sizeof(self.work_buffer)}'
+            if not self.work_buffer or plan.work_size > ffi.sizeof(self.work_buffer):
+                self.work_buffer = ffi.new('char[]', plan.work_size)
             plan.work_data = self.work_buffer
 
         lib.ggml_graph_compute(graph, ffi.addressof(plan))
 
     def use_buf(self, ctx, i):
+        if self.alloc:
+            return
+        
         scratch = self.tmp_ggml_scratch
         last_size = 0
 
@@ -177,7 +285,7 @@ class LlamaContext:
         else:
             scratch.offs = 0
             scratch.size = self.scratch_size
-            scratch.data = self.buf_scratch[i]
+            scratch.data = self.buf_scratch[i].ptr
             last_size = lib.ggml_set_scratch(ctx, scratch[0])   
         
         if self.buf_last >= 0:
@@ -187,9 +295,12 @@ class LlamaContext:
      
     def get_buf_max_mem(self, i): return self.buf_scratch_max_size[i]
     
-    def llama_eval(self, s: RunState, ep: EvalParams) -> GraphResult:
+    def llama_eval(self, ep: EvalParams) -> GraphResult:
         N = ep.n_tokens
-        result = self.llama_build_graph(s, ep)
+
+        if self.alloc: lib.ggml_allocr_reset(self.alloc)
+        result = self.llama_build_graph(ep)
+        if self.alloc: lib.ggml_allocr_alloc_graph(self.alloc, result.graph)
 
         # for big prompts, if BLAS is enabled, it is better to use only one thread
         # otherwise, the threads are spin-lock waiting for the BLAS calls and are degrading the performance
@@ -197,55 +308,36 @@ class LlamaContext:
             n_threads = 1
         else:
             n_threads = ep.n_threads
+        # n_threads = ep.n_threads
         
-        if GGML_USE_METAL:
-            if self.ctx_metal and N == 1:
-                # TODO: disabled until #2413 is resolved
-                #if (!lib.ggml_metal_if_optimized(lctx.ctx_metal)) {
-                #    lib.ggml_metal_graph_find_concurrency(lctx.ctx_metal, gf)
-                #}
-                lib.ggml_metal_set_n_cb     (s.ctx_metal, n_threads)
-                lib.ggml_metal_graph_compute(s.ctx_metal, result.graph)
-                for r in [result.logits, result.argmax]:
-                    if r:
-                        lib.ggml_metal_get_tensor(s.ctx_metal, r)
-            else:
-                # IMPORTANT:
-                # Since we don't have efficient Matrix x Matrix Metal multiplication yet, we fallback to vanilla
-                # ggml_graph_compute(). It uses Apple's Accelerate CBLAS API which takes advantage of the ANE or the AMX
-                # coprocessor.
-                #
-                # When we implement Matrix x Matrix Metal multiplication, we can avoid this branch.
-                # But for now, we have focused only on Matrix x Vector Metal multiplication.
-                #
-                # TODO: avoid these syncs via shared memory (ref #1696)
-                #
-                if s.ctx_metal:
-                    # We need to sync the GPU KV cache with the CPU KV cache
-                    lib.ggml_metal_get_tensor(s.ctx_metal, s.key_cache)
-                    lib.ggml_metal_get_tensor(s.ctx_metal, s.value_cache)
-
-                self.ggml_graph_compute_helper(result.graph, n_threads)
+        if METAL and self.ctx_metal:
+            lib.ggml_metal_set_n_cb     (self.ctx_metal, n_threads)
+            lib.ggml_metal_graph_compute(self.ctx_metal, result.graph)
+            lib.ggml_metal_get_tensor   (self.ctx_metal, result.logits)
+            lib.ggml_metal_get_tensor   (self.ctx_metal, result.logits or result.argmax)
+            # if (!lctx.embedding.empty()) {
+            #     ggml_metal_get_tensor(lctx.ctx_metal, embeddings);
+            # }
         else:
             self.ggml_graph_compute_helper(result.graph, n_threads)
 
         # update kv token count
-        s.cache_length = ep.n_past + N
+        self.kv_self.cache_length = ep.n_past + N
 
         return result
 
-    def llama_build_graph(self, s: RunState, ep: EvalParams) -> GraphResult:
+    def llama_build_graph(self, ep: EvalParams) -> GraphResult:
         assert ((not ep.tokens and ep.embd) or (ep.tokens and not ep.embd))
 
         p = self.p
-        w = self.w
+        w = self.model
 
         N = ep.n_tokens
         n_past = ep.n_past
 
-        n_gqa = p.n_heads // p.n_kv_heads
+        n_gqa = p.n_gqa
         n_embd = p.dim
-        n_embd_gqa = p.dim // n_gqa
+        n_embd_gqa = p.n_embd_gqa
         n_embd_head = p.head_size
         n_layer = p.n_layers
         n_ctx = p.seq_len
@@ -253,33 +345,52 @@ class LlamaContext:
         n_head_kv = p.n_kv_heads
         
         params = ffi.new('struct ggml_init_params*')
-        params.mem_size = 500*1024*1024
-        params.mem_buffer = ffi.NULL
-        params.no_alloc = False
+        if self.alloc:
+            params.mem_size = self.buf_compute.size
+            params.mem_buffer = self.buf_compute.ptr
+            params.no_alloc = True
+        else:
+            params.mem_size = 500*1024*1024
+            # params.mem_size = 1024*1024*1024
+            params.mem_buffer = ffi.NULL
+            params.no_alloc = False
         ctx0 = lib.ggml_init(params[0])
 
-        try:
+        def prepare_copy(tensor):
+            if not self.alloc:
+                return True
+            lib.ggml_allocr_alloc(self.alloc, tensor)
+            return not lib.ggml_allocr_is_measure(self.alloc)
 
+        try:
             gf = lib.ggml_new_graph(ctx0)
 
             if ep.tokens:
                 inp_tokens = lib.ggml_new_tensor_1d(ctx0, lib.GGML_TYPE_I32, N)
-                copy(np.array(ep.tokens, dtype=np.int32), inp_tokens)
-                # ffi.memmove(inp_tokens.data, np.array(ep.tokens, dtype=int), N*lib.ggml_element_size(inp_tokens))
+
+                if prepare_copy(inp_tokens):
+                    copy(np.array(ep.tokens, dtype=np.int32), inp_tokens)
+                    # ffi.memmove(inp_tokens.data, np.array(ep.tokens, dtype=int), N*lib.ggml_element_size(inp_tokens))
+
                 inpL = lib.ggml_get_rows(ctx0, w.token_embedding_table, inp_tokens)
             else:
                 inpL = lib.ggml_new_tensor_2d(ctx0, lib.GGML_TYPE_F32, n_embd, N)
-                ffi.memmove(inpL.data, ffi.frombuffer(ep.embd), N * n_embd * lib.ggml_element_size(inpL))
+                if prepare_copy(inpL):
+                    ffi.memmove(inpL.data, ffi.frombuffer(ep.embd), N * n_embd * lib.ggml_element_size(inpL))
 
             assert _get_shape(inpL) == (n_embd, N), f'Bad input shape: {_get_shape(inpL)} != {(n_embd, N)}'
 
             KQ_scale = lib.ggml_new_tensor_1d(ctx0, lib.GGML_TYPE_F32, 1)
-            lib.ggml_set_f32(KQ_scale, 1.0/math.sqrt(float(n_embd)/n_head))
+            if prepare_copy(KQ_scale):
+                lib.ggml_set_f32(KQ_scale, 1.0/math.sqrt(float(n_embd)/n_head))
 
             for il in range(n_layer):
                 inpSA = inpL
-                
+
+                focus_on_last_token_after_kv_cache_write = il == n_layer - 1 and not ep.all_logits
+                # focus_on_last_token_after_kv_cache_write = False
                 self.use_buf(ctx0, 0)
+                # self.use_buf(ctx0, 2 if focus_on_last_token_after_kv_cache_write else 0)
 
                 #  norm
                 cur = lib.ggml_rms_norm(ctx0, inpL, rms_norm_eps)
@@ -301,17 +412,19 @@ class LlamaContext:
                 tmpv = lib.ggml_mul_mat(ctx0, w.wv[il], cur)
                 Vcur = lib.ggml_transpose(ctx0, lib.ggml_reshape_2d(ctx0, tmpv, n_embd_gqa, N))
                 
-                k = lib.ggml_view_1d(ctx0, s.key_cache, N*n_embd_gqa,
-                                    (lib.ggml_element_size(s.key_cache)*n_embd_gqa)*(il*n_ctx + n_past))
-                v = lib.ggml_view_2d(ctx0, s.value_cache, N, n_embd_gqa,
-                        (   n_ctx)*lib.ggml_element_size(s.value_cache),
-                        (il*n_ctx)*lib.ggml_element_size(s.value_cache)*n_embd_gqa + n_past*lib.ggml_element_size(s.value_cache))
+                k = lib.ggml_view_1d(ctx0, self.kv_self.k, N*n_embd_gqa,
+                                    (lib.ggml_element_size(self.kv_self.k)*n_embd_gqa)*(il*n_ctx + n_past))
+                v = lib.ggml_view_2d(ctx0, self.kv_self.v, N, n_embd_gqa,
+                        (   n_ctx)*lib.ggml_element_size(self.kv_self.v),
+                        (il*n_ctx)*lib.ggml_element_size(self.kv_self.v)*n_embd_gqa + n_past*lib.ggml_element_size(self.kv_self.v))
+                
 
                 #  important: storing RoPE-ed version of K in the KV cache!
                 lib.ggml_build_forward_expand(gf, lib.ggml_cpy(ctx0, Kcur, k))
                 lib.ggml_build_forward_expand(gf, lib.ggml_cpy(ctx0, Vcur, v))
 
-                if il == n_layer - 1 and not ep.all_logits: # and not ep.return_embeddings:
+                if focus_on_last_token_after_kv_cache_write:
+                # if il == n_layer - 1 and not ep.all_logits:
                     # From here on, we only care about the last token and its logits.
                     # We do as if N = 1 (from the end)
                     # This means we only keep the last chunk of cur and inpSA
@@ -336,7 +449,7 @@ class LlamaContext:
 
                 Q = lib.ggml_permute(ctx0, Qcur, 0, 2, 1, 3)
                 K = lib.ggml_permute(ctx0, lib.ggml_reshape_3d(ctx0,
-                                lib.ggml_view_1d(ctx0, s.key_cache, (n_past + N)*n_embd_gqa, il*n_ctx*lib.ggml_element_size(s.key_cache)*n_embd_gqa),
+                                lib.ggml_view_1d(ctx0, self.kv_self.k, (n_past + N)*n_embd_gqa, il*n_ctx*lib.ggml_element_size(self.kv_self.k)*n_embd_gqa),
                                 n_embd_head, n_head_kv, n_past + N),
                             0, 2, 1, 3)
                 #  K * Q
@@ -349,11 +462,11 @@ class LlamaContext:
                 #  KQ = soft_max(KQ_masked)
                 KQ_soft_max = lib.ggml_soft_max_inplace(ctx0, KQ_masked)
                 #  split cached V into n_head heads
-                V = lib.ggml_view_3d(ctx0, s.value_cache,
+                V = lib.ggml_view_3d(ctx0, self.kv_self.v,
                             n_past + N, n_embd_head, n_head_kv,
-                            n_ctx*lib.ggml_element_size(s.value_cache),
-                            n_ctx*lib.ggml_element_size(s.value_cache)*n_embd_head,
-                            n_ctx*lib.ggml_element_size(s.value_cache)*n_embd_gqa*il)
+                            n_ctx*lib.ggml_element_size(self.kv_self.v),
+                            n_ctx*lib.ggml_element_size(self.kv_self.v)*n_embd_head,
+                            n_ctx*lib.ggml_element_size(self.kv_self.v)*n_embd_gqa*il)
 
                 if True:
                     KQV = lib.ggml_mul_mat(ctx0, V, KQ_soft_max)
@@ -361,7 +474,7 @@ class LlamaContext:
                     #  make V contiguous in memory to speed up the matmul, however we waste time on the copy
                     #  on M1 this is faster for the perplexity computation, but ~5% slower for the single-token generation
                     #  is there a better way?
-                    V_cont = lib.ggml_cpy(ctx0, V, lib.ggml_new_tensor_3d(ctx0, s.value_cache.type, n_past + N, n_embd_head, n_head))
+                    V_cont = lib.ggml_cpy(ctx0, V, lib.ggml_new_tensor_3d(ctx0, self.kv_self.v.type, n_past + N, n_embd_head, n_head))
                     KQV = lib.ggml_mul_mat(ctx0, V_cont, KQ_soft_max)
                 #  KQV_merged = KQV.permute(0, 2, 1, 3)
                 KQV_merged = lib.ggml_permute(ctx0, KQV, 0, 2, 1, 3)
@@ -398,10 +511,12 @@ class LlamaContext:
             cur = lib.ggml_rms_norm(ctx0, inpL, rms_norm_eps)
 
             #  cur = cur*norm(broadcasted)
-            cur = lib.ggml_set_name(lib.ggml_mul(ctx0, cur, w.rms_final_weight), ffi.new("char[]", b"result_norm\0"))
+            cur = lib.ggml_mul(ctx0, cur, w.rms_final_weight)
+            lib.ggml_set_name(cur, _const_cstr(b"result_norm\0"))
 
             #  lm_head
-            cur = lib.ggml_set_name(lib.ggml_mul_mat(ctx0, w.wcls, cur), ffi.new("char[]", b"result_output\0"))
+            cur = lib.ggml_mul_mat(ctx0, w.wcls, cur)
+            lib.ggml_set_name(cur, _const_cstr(b"result_output\0"))
             
             self.use_buf(ctx0, -1)
 
@@ -420,11 +535,12 @@ class LlamaContext:
 
             res = gf.nodes[gf.n_nodes - 1]
             if ep.temperature == 0.0:
-                assert _get_shape(cur) == (N, 1), f'Bad argmax shape: {_get_shape(cur)} != {(N, 1)}'
+                assert _get_shape(res) == (N, 1), f'Bad argmax shape: {_get_shape(res)} != {(N, 1)}'
             else:
                 assert _get_shape(res) == (p.vocab_size, N), f'Bad output shape: {_get_shape(res)} != {(p.vocab_size, N)}'
-            # assert ffi.string(res.name).decode('utf-8') == "result_output", ffi.string(res.name)
+            # assert ffi.string(res.name).decode('utf-8').startswith("result_output"), ffi.string(res.name)
             
+            # return GraphResult(graph=gf, logits=res)
             return GraphResult(graph=gf, argmax=res) if ep.temperature == 0.0 \
                 else GraphResult(graph=gf, logits=res)
 
@@ -484,7 +600,7 @@ def read_tensor(name: str, f, tensor: ffi.CData):
     array = np.frombuffer(f.read(nbytes), dtype=np.float32).reshape(shape)
     copy(array, tensor)
 
-def checkpoint_init_weights(mm, p: Config, w: TransformerWeights):
+def checkpoint_init_weights(mm, p: Config, w: LlamaWeights):
     read_tensor("token_embedding_table", mm, w.token_embedding_table)
     for i in range(p.n_layers): read_tensor(f'{w.rms_att_weight[i]}', mm, w.rms_att_weight[i])
     for i in range(p.n_layers): read_tensor(f'{w.wq[i]}', mm, w.wq[i])
@@ -594,27 +710,30 @@ def run(
 
     print(config)
 
-    ctx = init(mem_size=30*1024*1024*1024)
-
     # tensor_type = lib.GGML_TYPE_Q5_K
     tensor_type = lib.GGML_TYPE_F32
+    # tensor_type = lib.GGML_TYPE_F16
 
-    weights = TransformerWeights(config, ctx, tensor_type, shared_weights)
+    weights = LlamaWeights(config, tensor_type, shared_weights)
     checkpoint_init_weights(mm, config, weights)
     
     mm.close()
     os.close(fd)
 
     vocab = read_vocab(tokenizer_model, config)
-    state = RunState(config, ctx, tensor_type)
+    kv_cache = KVCache(config,
+                    #  lib.GGML_TYPE_Q5_K)
+                     tensor_type)
+    probindex = [ProbIndex(-1.0, -1) for i in range(config.vocab_size)]
 
-    # if GGML_USE_METAL:
+    # if METAL:
     #     state.ctx_metal = lib.ggml_metal_init(1)
     #     lib.ggml_metal_add_buffer(state.ctx_metal, "data", data_ptr, data_size, max_size)
 
     # process the prompt, if any
     prompt_tokens = None
     if prompt is not None:
+        print('Processing prompt...')
         prompt_tokens = bpe_encode(prompt, vocab)
         steps += len(prompt_tokens)
 
@@ -636,13 +755,14 @@ def run(
         else:
             assert result.logits is not None
             logits = numpy(result.logits)
-            assert logits.shape == (config.vocab_size, 1)
+            assert logits.shape[0] == config.vocab_size, f'Bad logits shape: {logits.shape} != ({config.vocab_size}, N)'
+            logits = logits[:, -1] # only care about the last token's logits
             if (topp <= 0):
                 # simply sample from the predicted probability distribution
                 return sample(logits, config.vocab_size)
             else:
                 # top-p (nucleus) sampling, clamping the least likely tokens to zero
-                return sample_topp(logits, config.vocab_size, topp, state.probindex)
+                return sample_topp(logits, config.vocab_size, topp, probindex)
 
     def mk_params(tokens):
         return EvalParams(
@@ -652,13 +772,13 @@ def run(
             all_logits=not skip_unused,
             tokens=tokens)
     
-    lctx = LlamaContext(config, weights)
+    lctx = LlamaContext(config, kv_cache, weights)
 
     if prompt_tokens:
         print("prompt token count: ", len(prompt_tokens), file=sys.stderr)
         prompt_tokens.insert(0, token)
 
-        res = lctx.llama_eval(state, mk_params(prompt_tokens))
+        res = lctx.llama_eval(mk_params(prompt_tokens))
         pos += len(prompt_tokens)
         token = pick_token(res)
         
@@ -669,7 +789,7 @@ def run(
     while (pos < steps):
         assert pos < config.seq_len, f'pos {pos} >= seq_len {config.seq_len} (TODO: add support for context compression)'
 
-        result = lctx.llama_eval(state, mk_params([token]))
+        result = lctx.llama_eval(mk_params([token]))
         pos += 1
         next = pick_token(result)
 
