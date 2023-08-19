@@ -151,6 +151,7 @@ class LlamaContext:
         self.buf_last = 0
 
         self.work_buffer = ffi.new('char[]', 500*1024*1024)
+        self.tmp_ggml_scratch = ffi.new('struct ggml_scratch*')
 
         # if GGML_USE_METAL:
         #     self.ctx_metal = lib.ggml_metal_init(1)
@@ -165,7 +166,7 @@ class LlamaContext:
         lib.ggml_graph_compute(graph, ffi.addressof(plan))
 
     def use_buf(self, ctx, i):
-        scratch = ffi.new('struct ggml_scratch*')
+        scratch = self.tmp_ggml_scratch
         last_size = 0
 
         if i == -1:
