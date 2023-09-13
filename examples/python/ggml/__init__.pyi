@@ -91,17 +91,23 @@ class lib:
   @property
   def GGML_OP_ADD1(self) -> int: ...
   @property
+  def GGML_OP_ADD_REL_POS(self) -> int: ...
+  @property
   def GGML_OP_ALIBI(self) -> int: ...
   @property
   def GGML_OP_ARGMAX(self) -> int: ...
   @property
   def GGML_OP_CLAMP(self) -> int: ...
   @property
+  def GGML_OP_CONCAT(self) -> int: ...
+  @property
   def GGML_OP_CONT(self) -> int: ...
   @property
   def GGML_OP_CONV_1D(self) -> int: ...
   @property
   def GGML_OP_CONV_2D(self) -> int: ...
+  @property
+  def GGML_OP_CONV_TRANSPOSE_2D(self) -> int: ...
   @property
   def GGML_OP_COUNT(self) -> int: ...
   @property
@@ -127,9 +133,13 @@ class lib:
   @property
   def GGML_OP_FLASH_FF(self) -> int: ...
   @property
+  def GGML_OP_GET_REL_POS(self) -> int: ...
+  @property
   def GGML_OP_GET_ROWS(self) -> int: ...
   @property
   def GGML_OP_GET_ROWS_BACK(self) -> int: ...
+  @property
+  def GGML_OP_GROUP_NORM(self) -> int: ...
   @property
   def GGML_OP_LOG(self) -> int: ...
   @property
@@ -211,6 +221,8 @@ class lib:
   @property
   def GGML_OP_UNARY(self) -> int: ...
   @property
+  def GGML_OP_UPSCALE(self) -> int: ...
+  @property
   def GGML_OP_VIEW(self) -> int: ...
   @property
   def GGML_OP_WIN_PART(self) -> int: ...
@@ -287,9 +299,13 @@ class lib:
   @property
   def GGUF_TYPE_FLOAT32(self) -> int: ...
   @property
+  def GGUF_TYPE_FLOAT64(self) -> int: ...
+  @property
   def GGUF_TYPE_INT16(self) -> int: ...
   @property
   def GGUF_TYPE_INT32(self) -> int: ...
+  @property
+  def GGUF_TYPE_INT64(self) -> int: ...
   @property
   def GGUF_TYPE_INT8(self) -> int: ...
   @property
@@ -298,6 +314,8 @@ class lib:
   def GGUF_TYPE_UINT16(self) -> int: ...
   @property
   def GGUF_TYPE_UINT32(self) -> int: ...
+  @property
+  def GGUF_TYPE_UINT64(self) -> int: ...
   @property
   def GGUF_TYPE_UINT8(self) -> int: ...
   def abort_callback(data: ffi.CData) -> bool:
@@ -399,6 +417,24 @@ class lib:
                 struct ggml_tensor  * b);
     """
     ...
+  def ggml_add_rel_pos(ctx: ffi.CData, a: ffi.CData, pw: ffi.CData, ph: ffi.CData) -> ffi.CData:
+    """
+        GGML_API struct ggml_tensor * ggml_add_rel_pos(
+                struct ggml_context * ctx,
+                struct ggml_tensor  * a,
+                struct ggml_tensor  * pw,
+                struct ggml_tensor  * ph);
+    """
+    ...
+  def ggml_add_rel_pos_inplace(ctx: ffi.CData, a: ffi.CData, pw: ffi.CData, ph: ffi.CData) -> ffi.CData:
+    """
+        GGML_API struct ggml_tensor * ggml_add_rel_pos_inplace(
+                struct ggml_context * ctx,
+                struct ggml_tensor  * a,
+                struct ggml_tensor  * pw,
+                struct ggml_tensor  * ph);
+    """
+    ...
   def ggml_alibi(ctx: ffi.CData, a: ffi.CData, n_past: int, n_head: int, bias_max: float) -> ffi.CData:
     """
     alibi position embedding
@@ -438,7 +474,7 @@ class lib:
     tell the allocator to parse nodes following the order described in the list
     you should call this if your graph are optimized to execute out-of-order
 
-    GGML_API void   ggml_allocr_set_parse_seq(struct ggml_allocr * alloc, int * list, int n);
+    GGML_API void   ggml_allocr_set_parse_seq(struct ggml_allocr * alloc, const int * list, int n);
     """
     ...
   def ggml_are_same_shape(t0: ffi.CData, t1: ffi.CData) -> bool:
@@ -459,6 +495,9 @@ class lib:
   def ggml_build_backward(ctx: ffi.CData, gf: ffi.CData, keep: bool) -> ffi.CData:
     """    GGML_API struct ggml_cgraph ggml_build_backward(struct ggml_context * ctx, struct ggml_cgraph * gf, bool keep);"""
     ...
+  def ggml_build_backward_expand(ctx: ffi.CData, gf: ffi.CData, gb: ffi.CData, keep: bool) -> None:
+    """    GGML_API void ggml_build_backward_expand(struct ggml_context * ctx, struct ggml_cgraph * gf, struct ggml_cgraph * gb, bool keep);"""
+    ...
   def ggml_build_forward(tensor: ffi.CData) -> ffi.CData:
     """    GGML_API struct ggml_cgraph ggml_build_forward (struct ggml_tensor * tensor);"""
     ...
@@ -466,7 +505,7 @@ class lib:
     """    GGML_API struct ggml_cgraph * ggml_build_forward_ctx(struct ggml_context * ctx, struct ggml_tensor * tensor);"""
     ...
   def ggml_build_forward_expand(cgraph: ffi.CData, tensor: ffi.CData) -> None:
-    """    GGML_API void ggml_build_forward_expand(struct ggml_cgraph * cgraph, struct ggml_tensor * tensor);"""
+    """    GGML_API void ggml_build_forward_expand (struct ggml_cgraph * cgraph, struct ggml_tensor * tensor);"""
     ...
   def ggml_cl_can_mul_mat(src0: ffi.CData, src1: ffi.CData, dst: ffi.CData) -> bool:
     """bool   ggml_cl_can_mul_mat(const struct ggml_tensor * src0, const struct ggml_tensor * src1, struct ggml_tensor * dst);"""
@@ -507,6 +546,17 @@ class lib:
                 float                 max);
     """
     ...
+  def ggml_concat(ctx: ffi.CData, a: ffi.CData, b: ffi.CData) -> ffi.CData:
+    """
+    concat a and b on dim 2
+    used in stable-diffusion
+
+        GGML_API struct ggml_tensor * ggml_concat(
+                struct ggml_context * ctx,
+                struct ggml_tensor  * a,
+                struct ggml_tensor  * b);
+    """
+    ...
   def ggml_cont(ctx: ffi.CData, a: ffi.CData) -> ffi.CData:
     """
     make contiguous
@@ -541,7 +591,7 @@ class lib:
     conv_1d with padding = half
     alias for ggml_conv_1d(a, b, s, a->ne[0]/2, d)
 
-        GGML_API struct ggml_tensor * ggml_conv_1d_ph(
+        GGML_API struct ggml_tensor* ggml_conv_1d_ph(
                 struct ggml_context * ctx,
                 struct ggml_tensor  * a,
                 struct ggml_tensor  * b,
@@ -561,6 +611,49 @@ class lib:
                 int                   p1,
                 int                   d0,
                 int                   d1);
+    """
+    ...
+  def ggml_conv_2d_s1_ph(ctx: ffi.CData, a: ffi.CData, b: ffi.CData) -> ffi.CData:
+    """
+    kernel size is a->ne[0] x a->ne[1]
+    stride is 1
+    padding is half
+    example:
+    a:      3    3    256  256
+    b:     64   64    256    1
+    res:   64   64    256    1
+    used in sam
+
+        GGML_API struct ggml_tensor * ggml_conv_2d_s1_ph(
+                struct ggml_context * ctx,
+                struct ggml_tensor  * a,
+                struct ggml_tensor  * b);
+    """
+    ...
+  def ggml_conv_2d_sk_p0(ctx: ffi.CData, a: ffi.CData, b: ffi.CData) -> ffi.CData:
+    """
+    kernel size is a->ne[0] x a->ne[1]
+    stride is equal to kernel size
+    padding is zero
+    example:
+    a:     16   16    3  768
+    b:   1024 1024    3    1
+    res:   64   64  768    1
+    used in sam
+
+        GGML_API struct ggml_tensor * ggml_conv_2d_sk_p0(
+                struct ggml_context * ctx,
+                struct ggml_tensor  * a,
+                struct ggml_tensor  * b);
+    """
+    ...
+  def ggml_conv_transpose_2d_p0(ctx: ffi.CData, a: ffi.CData, b: ffi.CData, stride: int) -> ffi.CData:
+    """
+        GGML_API struct ggml_tensor * ggml_conv_transpose_2d_p0(
+                struct ggml_context * ctx,
+                struct ggml_tensor  * a,
+                struct ggml_tensor  * b,
+                int                   stride);
     """
     ...
   def ggml_cpu_has_arm_fma() -> int:
@@ -607,6 +700,9 @@ class lib:
     ...
   def ggml_cpu_has_sse3() -> int:
     """    GGML_API int ggml_cpu_has_sse3       (void);"""
+    ...
+  def ggml_cpu_has_ssse3() -> int:
+    """    GGML_API int ggml_cpu_has_ssse3      (void);"""
     ...
   def ggml_cpu_has_vsx() -> int:
     """    GGML_API int ggml_cpu_has_vsx        (void);"""
@@ -657,8 +753,14 @@ class lib:
   def ggml_cuda_assign_buffers_force_inplace(tensor: ffi.CData) -> None:
     """GGML_API void   ggml_cuda_assign_buffers_force_inplace(struct ggml_tensor * tensor);"""
     ...
+  def ggml_cuda_assign_buffers_no_alloc(tensor: ffi.CData) -> None:
+    """GGML_API void   ggml_cuda_assign_buffers_no_alloc(struct ggml_tensor * tensor);"""
+    ...
   def ggml_cuda_assign_buffers_no_scratch(tensor: ffi.CData) -> None:
     """GGML_API void   ggml_cuda_assign_buffers_no_scratch(struct ggml_tensor * tensor);"""
+    ...
+  def ggml_cuda_assign_scratch_offset(tensor: ffi.CData, offset: int) -> None:
+    """GGML_API void   ggml_cuda_assign_scratch_offset(struct ggml_tensor * tensor, size_t offset);"""
     ...
   def ggml_cuda_can_mul_mat(src0: ffi.CData, src1: ffi.CData, dst: ffi.CData) -> bool:
     """GGML_API bool   ggml_cuda_can_mul_mat(const struct ggml_tensor * src0, const struct ggml_tensor * src1, struct ggml_tensor * dst);"""
@@ -922,6 +1024,17 @@ class lib:
   def ggml_get_no_alloc(ctx: ffi.CData) -> bool:
     """    GGML_API bool    ggml_get_no_alloc(struct ggml_context * ctx);"""
     ...
+  def ggml_get_rel_pos(ctx: ffi.CData, a: ffi.CData, qh: int, kh: int) -> ffi.CData:
+    """
+    used in sam
+
+        GGML_API struct ggml_tensor * ggml_get_rel_pos(
+                struct ggml_context * ctx,
+                struct ggml_tensor  * a,
+                int                   qh,
+                int                   kh);
+    """
+    ...
   def ggml_get_rows(ctx: ffi.CData, a: ffi.CData, b: ffi.CData) -> ffi.CData:
     """
         GGML_API struct ggml_tensor * ggml_get_rows(
@@ -992,6 +1105,26 @@ class lib:
     ...
   def ggml_graph_reset(cgraph: ffi.CData) -> None:
     """    GGML_API              void ggml_graph_reset  (struct ggml_cgraph * cgraph);"""
+    ...
+  def ggml_group_norm(ctx: ffi.CData, a: ffi.CData, n_groups: int) -> ffi.CData:
+    """
+    group normalize along ne0*ne1*n_groups
+    used in stable-diffusion
+    TODO: eps is hardcoded to 1e-6 for now
+
+        GGML_API struct ggml_tensor * ggml_group_norm(
+                struct ggml_context * ctx,
+                struct ggml_tensor  * a,
+                int                   n_groups);
+    """
+    ...
+  def ggml_group_norm_inplace(ctx: ffi.CData, a: ffi.CData, n_groups: int) -> ffi.CData:
+    """
+        GGML_API struct ggml_tensor * ggml_group_norm_inplace(
+                struct ggml_context * ctx,
+                struct ggml_tensor  * a,
+                int                   n_groups);
+    """
     ...
   def ggml_init(params: ffi.CData) -> ffi.CData:
     """    GGML_API struct ggml_context * ggml_init(struct ggml_init_params params);"""
@@ -1443,21 +1576,22 @@ class lib:
                 int64_t ne3);
     """
     ...
-  def ggml_norm(ctx: ffi.CData, a: ffi.CData) -> ffi.CData:
+  def ggml_norm(ctx: ffi.CData, a: ffi.CData, eps: float) -> ffi.CData:
     """
     normalize along rows
-    TODO: eps is hardcoded to 1e-5 for now
 
         GGML_API struct ggml_tensor * ggml_norm(
                 struct ggml_context * ctx,
-                struct ggml_tensor  * a);
+                struct ggml_tensor  * a,
+                float                 eps);
     """
     ...
-  def ggml_norm_inplace(ctx: ffi.CData, a: ffi.CData) -> ffi.CData:
+  def ggml_norm_inplace(ctx: ffi.CData, a: ffi.CData, eps: float) -> ffi.CData:
     """
         GGML_API struct ggml_tensor * ggml_norm_inplace(
                 struct ggml_context * ctx,
-                struct ggml_tensor  * a);
+                struct ggml_tensor  * a,
+                float                 eps);
     """
     ...
   def ggml_nrows(tensor: ffi.CData) -> int:
@@ -1490,10 +1624,10 @@ class lib:
     initialize optimizer context
 
         GGML_API void ggml_opt_init(
-                struct ggml_context * ctx,
+                struct ggml_context     * ctx,
                 struct ggml_opt_context * opt,
-                struct ggml_opt_params params,
-                int64_t nx);
+                struct ggml_opt_params    params,
+                int64_t                   nx);
     """
     ...
   def ggml_opt_resume(ctx: ffi.CData, opt: ffi.CData, f: ffi.CData) -> int:
@@ -1506,7 +1640,7 @@ class lib:
                 struct ggml_tensor * f);
     """
     ...
-  def ggml_opt_resume_g(ctx: ffi.CData, opt: ffi.CData, f: ffi.CData, gf: ffi.CData, gb: ffi.CData) -> int:
+  def ggml_opt_resume_g(ctx: ffi.CData, opt: ffi.CData, f: ffi.CData, gf: ffi.CData, gb: ffi.CData, callback: ffi.CData, callback_data: ffi.CData) -> int:
     """
     continue optimizing the function defined by the tensor f
 
@@ -1515,7 +1649,9 @@ class lib:
                 struct ggml_opt_context * opt,
                 struct ggml_tensor * f,
                 struct ggml_cgraph * gf,
-                struct ggml_cgraph * gb);
+                struct ggml_cgraph * gb,
+                ggml_opt_callback callback,
+                void * callback_data);
     """
     ...
   def ggml_out_prod(ctx: ffi.CData, a: ffi.CData, b: ffi.CData) -> ffi.CData:
@@ -1705,16 +1841,16 @@ class lib:
                 float                 eps);
     """
     ...
-  def ggml_rms_norm_back(ctx: ffi.CData, a: ffi.CData, b: ffi.CData) -> ffi.CData:
+  def ggml_rms_norm_back(ctx: ffi.CData, a: ffi.CData, b: ffi.CData, eps: float) -> ffi.CData:
     """
     a - x
     b - dy
-    TODO: update with configurable eps
 
         GGML_API struct ggml_tensor * ggml_rms_norm_back(
                 struct ggml_context * ctx,
                 struct ggml_tensor  * a,
-                struct ggml_tensor  * b);
+                struct ggml_tensor  * b,
+                float                 eps);
     """
     ...
   def ggml_rms_norm_inplace(ctx: ffi.CData, a: ffi.CData, eps: float) -> ffi.CData:
@@ -1742,7 +1878,7 @@ class lib:
                 int                   n_ctx);
     """
     ...
-  def ggml_rope_back(ctx: ffi.CData, a: ffi.CData, n_past: int, n_dims: int, mode: int, n_ctx: int) -> ffi.CData:
+  def ggml_rope_back(ctx: ffi.CData, a: ffi.CData, n_past: int, n_dims: int, mode: int, n_ctx: int, freq_base: float, freq_scale: float, xpos_base: float, xpos_down: bool) -> ffi.CData:
     """
     rotary position embedding backward, i.e compute dx from dy
     a - dy
@@ -1753,7 +1889,11 @@ class lib:
                 int                   n_past,
                 int                   n_dims,
                 int                   mode,
-                int                   n_ctx);
+                int                   n_ctx,
+                float                 freq_base,
+                float                 freq_scale,
+                float                 xpos_base,
+                bool                  xpos_down);
     """
     ...
   def ggml_rope_custom(ctx: ffi.CData, a: ffi.CData, n_past: int, n_dims: int, mode: int, n_ctx: int, freq_base: float, freq_scale: float) -> ffi.CData:
@@ -1797,6 +1937,19 @@ class lib:
                 int                   n_dims,
                 int                   mode,
                 int                   n_ctx);
+    """
+    ...
+  def ggml_rope_xpos_inplace(ctx: ffi.CData, a: ffi.CData, n_past: int, n_dims: int, base: float, down: bool) -> ffi.CData:
+    """
+    xPos RoPE, in-place, returns view(a)
+
+        GGML_API struct ggml_tensor * ggml_rope_xpos_inplace(
+                struct ggml_context * ctx,
+                struct ggml_tensor  * a,
+                int                   n_past,
+                int                   n_dims,
+                float                 base,
+                bool                  down);
     """
     ...
   def ggml_scale(ctx: ffi.CData, a: ffi.CData, b: ffi.CData) -> ffi.CData:
@@ -2131,6 +2284,17 @@ class lib:
             enum ggml_unary_op op);
     """
     ...
+  def ggml_upscale(ctx: ffi.CData, a: ffi.CData, scale_factor: int) -> ffi.CData:
+    """
+    nearest interpolate
+    used in stable-diffusion
+
+        GGML_API struct ggml_tensor * ggml_upscale(
+                struct ggml_context * ctx,
+                struct ggml_tensor  * a,
+                int                   scale_factor);
+    """
+    ...
   def ggml_used_mem(ctx: ffi.CData) -> int:
     """    GGML_API size_t  ggml_used_mem(const struct ggml_context * ctx);"""
     ...
@@ -2204,7 +2368,7 @@ class lib:
     """
     ...
   def ggml_view_tensor(ctx: ffi.CData, src: ffi.CData) -> ffi.CData:
-    """    GGML_API struct ggml_tensor * ggml_view_tensor(struct ggml_context * ctx, const struct ggml_tensor * src);"""
+    """    GGML_API struct ggml_tensor * ggml_view_tensor(struct ggml_context * ctx, struct ggml_tensor * src);"""
     ...
   def ggml_win_part(ctx: ffi.CData, a: ffi.CData, w: int) -> ffi.CData:
     """
@@ -2305,11 +2469,17 @@ class lib:
   def gguf_get_val_f32(ctx: ffi.CData, i: int) -> float:
     """    GGML_API float        gguf_get_val_f32 (struct gguf_context * ctx, int i);"""
     ...
+  def gguf_get_val_f64(ctx: ffi.CData, i: int) -> float:
+    """    GGML_API double       gguf_get_val_f64 (struct gguf_context * ctx, int i);"""
+    ...
   def gguf_get_val_i16(ctx: ffi.CData, i: int) -> int:
     """    GGML_API int16_t      gguf_get_val_i16 (struct gguf_context * ctx, int i);"""
     ...
   def gguf_get_val_i32(ctx: ffi.CData, i: int) -> int:
     """    GGML_API int32_t      gguf_get_val_i32 (struct gguf_context * ctx, int i);"""
+    ...
+  def gguf_get_val_i64(ctx: ffi.CData, i: int) -> int:
+    """    GGML_API int64_t      gguf_get_val_i64 (struct gguf_context * ctx, int i);"""
     ...
   def gguf_get_val_i8(ctx: ffi.CData, i: int) -> int:
     """    GGML_API int8_t       gguf_get_val_i8  (struct gguf_context * ctx, int i);"""
@@ -2322,6 +2492,9 @@ class lib:
     ...
   def gguf_get_val_u32(ctx: ffi.CData, i: int) -> int:
     """    GGML_API uint32_t     gguf_get_val_u32 (struct gguf_context * ctx, int i);"""
+    ...
+  def gguf_get_val_u64(ctx: ffi.CData, i: int) -> int:
+    """    GGML_API uint64_t     gguf_get_val_u64 (struct gguf_context * ctx, int i);"""
     ...
   def gguf_get_val_u8(ctx: ffi.CData, i: int) -> int:
     """
@@ -2364,11 +2537,17 @@ class lib:
   def gguf_set_val_f32(ctx: ffi.CData, key: ffi.CData, val: float) -> None:
     """    GGML_API void gguf_set_val_f32 (struct gguf_context * ctx, const char * key, float    val);"""
     ...
+  def gguf_set_val_f64(ctx: ffi.CData, key: ffi.CData, val: float) -> None:
+    """    GGML_API void gguf_set_val_f64 (struct gguf_context * ctx, const char * key, double   val);"""
+    ...
   def gguf_set_val_i16(ctx: ffi.CData, key: ffi.CData, val: int) -> None:
     """    GGML_API void gguf_set_val_i16 (struct gguf_context * ctx, const char * key, int16_t  val);"""
     ...
   def gguf_set_val_i32(ctx: ffi.CData, key: ffi.CData, val: int) -> None:
     """    GGML_API void gguf_set_val_i32 (struct gguf_context * ctx, const char * key, int32_t  val);"""
+    ...
+  def gguf_set_val_i64(ctx: ffi.CData, key: ffi.CData, val: int) -> None:
+    """    GGML_API void gguf_set_val_i64 (struct gguf_context * ctx, const char * key, int64_t  val);"""
     ...
   def gguf_set_val_i8(ctx: ffi.CData, key: ffi.CData, val: int) -> None:
     """    GGML_API void gguf_set_val_i8  (struct gguf_context * ctx, const char * key, int8_t   val);"""
@@ -2381,6 +2560,9 @@ class lib:
     ...
   def gguf_set_val_u32(ctx: ffi.CData, key: ffi.CData, val: int) -> None:
     """    GGML_API void gguf_set_val_u32 (struct gguf_context * ctx, const char * key, uint32_t val);"""
+    ...
+  def gguf_set_val_u64(ctx: ffi.CData, key: ffi.CData, val: int) -> None:
+    """    GGML_API void gguf_set_val_u64 (struct gguf_context * ctx, const char * key, uint64_t val);"""
     ...
   def gguf_set_val_u8(ctx: ffi.CData, key: ffi.CData, val: int) -> None:
     """
