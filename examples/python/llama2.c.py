@@ -67,35 +67,38 @@ class Config:
     @property
     def n_gqa(self): return self.n_heads // self.n_kv_heads
 
-class LlamaWeights:
-    def __init__(self, p: Config, type: int, shared_weights: bool):
-        self.ctx = init(mem_size=30*1024*1024*1024)
-        ctx = self.ctx
-    
-        # token embedding table
-        self.token_embedding_table = lib.ggml_new_tensor_2d(ctx, type, p.dim, p.vocab_size)
+@dataclass
+class LlamaLayer:
+    attn_norm: Tensor = None
+    attn_norm_b: Optional[Tensor] = None
+    attn_norm_2: Optional[Tensor] = None
+    attn_norm_2_b: Optional[Tensor] = None
 
-        # weights for rmsnorms
-        self.rms_att_weight = [lib.ggml_new_tensor_1d(ctx, type, p.dim) for _ in range(p.n_layers)]
-        self.rms_ffn_weight = [lib.ggml_new_tensor_1d(ctx, type, p.dim) for _ in range(p.n_layers)]
-        # weights for matmuls
-        self.wq = [lib.ggml_new_tensor_2d(ctx, type, p.dim, p.dim) for _ in range(p.n_layers)]
-        self.wk = [lib.ggml_new_tensor_2d(ctx, type, p.dim, p.dim) for _ in range(p.n_layers)]
-        self.wv = [lib.ggml_new_tensor_2d(ctx, type, p.dim, p.dim) for _ in range(p.n_layers)]
-        self.wo = [lib.ggml_new_tensor_2d(ctx, type, p.dim, p.dim) for _ in range(p.n_layers)]
-        # weights for ffn
-        self.w1 = [lib.ggml_new_tensor_2d(ctx, type, p.dim, p.hidden_dim) for _ in range(p.n_layers)]
-        self.w2 = [lib.ggml_new_tensor_2d(ctx, type, p.hidden_dim, p.dim) for _ in range(p.n_layers)]
-        self.w3 = [lib.ggml_new_tensor_2d(ctx, type, p.dim, p.hidden_dim) for _ in range(p.n_layers)]
-        # final rmsnorm
-        self.rms_final_weight = lib.ggml_new_tensor_1d(ctx, type, p.dim)
-        # freq_cis for RoPE relatively positional embeddings
-        self.freq_cis_real = lib.ggml_new_tensor_2d(ctx, type, p.seq_len, p.head_size // 2)
-        self.freq_cis_imag = lib.ggml_new_tensor_2d(ctx, type, p.seq_len, p.head_size // 2)
-        # (optional) classifier weights for the logits, on the last layer
-        self.wcls = lib.ggml_new_tensor_2d(ctx, type, p.dim, p.vocab_size)
-        self.shared_weights = shared_weights
+    # attention
+    wq: Optional[Tensor] = None
+    wk: Optional[Tensor] = None
+    wv: Optional[Tensor] = None
+    wo: Tensor = None
+    wqkv: Optional[Tensor] = None
 
+    # normalization
+    ffn_norm: Tensor = None
+
+    # ff
+    w1: Tensor = None # ffn_gat
+    w2: Tensor = None # ffn_dow
+    w3: Tensor = None # ffn_u
+
+@dataclass
+class LlamaModel:
+    ctx: ffi.CData
+    buf: AlignedBuf = None
+
+    tok_embeddings: Tensor = None
+    output_norm: Tensor = None
+    output_norm_b: Tensor = None
+    output: Tensor = None
+    layers: List[LlamaLayer] = None
 
 # struct used when sorting probabilities during top-p sampling
 @dataclass
@@ -180,7 +183,7 @@ class GraphResult:
     argmax: Optional[Tensor] = None
 
 class LlamaContext:
-    def __init__(self, p: Config, kv_cache: KVCache, model: LlamaWeights):
+    def __init__(self, p: Config, kv_cache: KVCache, model: LlamaModel):
         self.p = p
         self.kv_self = kv_cache
         self.model = model
@@ -336,7 +339,7 @@ class LlamaContext:
         assert ((ep.tokens is None and ep.embd) or (ep.tokens is not None and not ep.embd))
 
         p = self.p
-        w = self.model
+        model = self.model
 
         N = ep.n_tokens
         n_past = ep.n_past
@@ -378,7 +381,7 @@ class LlamaContext:
                     copy(ep.tokens, inp_tokens)
                     # ffi.memmove(inp_tokens.data, np.array(ep.tokens, dtype=int), N*lib.ggml_element_size(inp_tokens))
 
-                inpL = lib.ggml_get_rows(ctx0, w.token_embedding_table, inp_tokens)
+                inpL = lib.ggml_get_rows(ctx0, model.tok_embeddings, inp_tokens)
             else:
                 inpL = lib.ggml_new_tensor_2d(ctx0, lib.GGML_TYPE_F32, n_embd, N)
                 if prepare_copy(inpL):
@@ -402,12 +405,12 @@ class LlamaContext:
                 #  norm
                 cur = lib.ggml_rms_norm(ctx0, inpL, rms_norm_eps)
                 #  cur = cur*attention_norm(broadcasted)
-                cur = lib.ggml_mul(ctx0, cur, w.rms_att_weight[il])
+                cur = lib.ggml_mul(ctx0, cur, model.layers[il].attn_norm)
 
                 #  self-attention
                 
                 #  compute Q and K and RoPE them
-                tmpk = lib.ggml_mul_mat(ctx0, w.wk[il], cur)
+                tmpk = lib.ggml_mul_mat(ctx0, model.layers[il].wk, cur)
                 Kcur = lib.ggml_rope_custom_inplace(
                     ctx0, lib.ggml_reshape_3d(ctx0, tmpk, n_embd_head, n_head_kv, N),
                     n_past, n_embd_head, 0, 0,
@@ -416,7 +419,7 @@ class LlamaContext:
                 #  store key and value to memory
                 
                 #  compute the transposed [N, n_embd] V matrix
-                tmpv = lib.ggml_mul_mat(ctx0, w.wv[il], cur)
+                tmpv = lib.ggml_mul_mat(ctx0, model.layers[il].wv, cur)
                 Vcur = lib.ggml_transpose(ctx0, lib.ggml_reshape_2d(ctx0, tmpv, n_embd_gqa, N))
                 
                 k = lib.ggml_view_1d(ctx0, self.kv_self.k, N*n_embd_gqa,
@@ -448,7 +451,7 @@ class LlamaContext:
                     n_past += N - 1
                     N = 1
 
-                tmpq = lib.ggml_mul_mat(ctx0, w.wq[il], cur)
+                tmpq = lib.ggml_mul_mat(ctx0, model.layers[il].wq, cur)
                 Qcur = lib.ggml_rope_custom_inplace(
                     ctx0, lib.ggml_reshape_3d(ctx0, tmpq, n_embd_head, n_head, N),
                     n_past, n_embd_head, 0, 0,
@@ -490,7 +493,7 @@ class LlamaContext:
                         KQV_merged,
                         lib.ggml_new_tensor_2d(ctx0, lib.GGML_TYPE_F32, n_embd, N))
                 #  projection (no bias)
-                cur = lib.ggml_mul_mat(ctx0, w.wo[il], cur)
+                cur = lib.ggml_mul_mat(ctx0, model.layers[il].wo, cur)
                 
                 self.use_buf(ctx0, 1)
 
@@ -501,13 +504,13 @@ class LlamaContext:
                 #  norm
                 cur = lib.ggml_rms_norm(ctx0, inpFF, rms_norm_eps)
                 #  cur = cur*ffn_norm(broadcasted)
-                cur = lib.ggml_mul(ctx0, cur, w.rms_ffn_weight[il])
-                tmp = lib.ggml_mul_mat(ctx0, w.w3[il], cur)
-                cur = lib.ggml_mul_mat(ctx0, w.w1[il], cur)
+                cur = lib.ggml_mul(ctx0, cur, model.layers[il].ffn_norm)
+                tmp = lib.ggml_mul_mat(ctx0, model.layers[il].w3, cur)
+                cur = lib.ggml_mul_mat(ctx0, model.layers[il].w1, cur)
                 #  SILU activation
                 cur = lib.ggml_silu(ctx0, cur)
                 cur = lib.ggml_mul(ctx0, cur, tmp)
-                cur = lib.ggml_mul_mat(ctx0, w.w2[il], cur)
+                cur = lib.ggml_mul_mat(ctx0, model.layers[il].w2, cur)
                 cur = lib.ggml_add(ctx0, cur, inpFF)
                 #  input for next layer
                 inpL = cur
@@ -518,11 +521,11 @@ class LlamaContext:
             cur = lib.ggml_rms_norm(ctx0, inpL, rms_norm_eps)
 
             #  cur = cur*norm(broadcasted)
-            cur = lib.ggml_mul(ctx0, cur, w.rms_final_weight)
+            cur = lib.ggml_mul(ctx0, cur, model.output_norm)
             lib.ggml_set_name(cur, _const_cstr(b"result_norm\0"))
 
             #  lm_head
-            cur = lib.ggml_mul_mat(ctx0, w.wcls, cur)
+            cur = lib.ggml_mul_mat(ctx0, model.output, cur)
             lib.ggml_set_name(cur, _const_cstr(b"result_output\0"))
             
             self.use_buf(ctx0, -1)
@@ -601,31 +604,56 @@ def bpe_encode(text: str, v: Vocabulary) -> list[int]:
 
     return tokens
 
-def read_tensor(name: str, f, tensor: ffi.CData):
-    shape = tuple([tensor.ne[i] for i in range(tensor.n_dims)])
-    nbytes = np.prod(shape) * ffi.sizeof('float')
-    array = np.frombuffer(f.read(nbytes), dtype=np.float32).reshape(shape)
-    copy(array, tensor)
-
-def checkpoint_init_weights(mm, p: Config, w: LlamaWeights):
-    read_tensor("token_embedding_table", mm, w.token_embedding_table)
-    for i in range(p.n_layers): read_tensor(f'{w.rms_att_weight[i]}', mm, w.rms_att_weight[i])
-    for i in range(p.n_layers): read_tensor(f'{w.wq[i]}', mm, w.wq[i])
-    for i in range(p.n_layers): read_tensor(f'{w.wk[i]}', mm, w.wk[i])
-    for i in range(p.n_layers): read_tensor(f'{w.wv[i]}', mm, w.wv[i])
-    for i in range(p.n_layers): read_tensor(f'{w.wo[i]}', mm, w.wo[i])
-    for i in range(p.n_layers): read_tensor(f'{w.rms_ffn_weight[i]}', mm, w.rms_ffn_weight[i])
-    for i in range(p.n_layers): read_tensor(f'{w.w1[i]}', mm, w.w1[i])
-    for i in range(p.n_layers): read_tensor(f'{w.w2[i]}', mm, w.w2[i])
-    for i in range(p.n_layers): read_tensor(f'{w.w3[i]}', mm, w.w3[i])
-    read_tensor('rms_final_weight', mm, w.rms_final_weight)
-    read_tensor('freq_cis_real', mm, w.freq_cis_real)
-    read_tensor('freq_cis_imag', mm, w.freq_cis_imag)
-    if w.shared_weights:
-        # copy(np.ascontiguousarray(numpy(w.token_embedding_table).transpose()), w.wcls)
-        copy(np.ascontiguousarray(numpy(w.token_embedding_table)), w.wcls)
+def new_tensor(ctx, ttype, *shape: list[int]):
+    if len(shape) == 1:
+        return lib.ggml_new_tensor_1d(ctx, ttype, shape[0])
+    elif len(shape) == 2:
+        return lib.ggml_new_tensor_2d(ctx, ttype, shape[0], shape[1])
+    elif len(shape) == 3:
+        return lib.ggml_new_tensor_3d(ctx, ttype, shape[0], shape[1], shape[2])
+    elif len(shape) == 4:
+        return lib.ggml_new_tensor_4d(ctx, ttype, shape[0], shape[1], shape[2], shape[3])
     else:
-        read_tensor('wcls', mm, w.wcls)
+        raise Exception(f'Bad shape: {shape}')
+
+def read_llama2c_model(mm, p: Config, shared_weights: bool) -> LlamaModel:
+    model = LlamaModel(ctx = init(mem_size=30*1024*1024*1024))
+    model.layers = [LlamaLayer() for _ in range(p.n_layers)]
+
+    def read_tensor(name: str, *shape: Tuple[int, ...]):
+        # shape = tuple([tensor.ne[i] for i in range(tensor.n_dims)])
+        nbytes = np.prod(shape) * ffi.sizeof('float')
+        # TODO: make type depend on name as in quantization routine
+        ttype = lib.GGML_TYPE_F32
+        array = np.frombuffer(mm.read(nbytes), dtype=np.float32).reshape(shape)
+        tensor = new_tensor(model.ctx, ttype, *shape)
+        lib.ggml_set_name(tensor, _const_cstr(name.encode()))
+        
+        copy(array, tensor)
+        return tensor
+        
+    model.tok_embeddings = read_tensor("token_embd", p.dim, p.vocab_size)
+    for i in range(p.n_layers): model.layers[i].attn_norm = read_tensor(f'blk.{i}.attn_norm', p.dim)
+    for i in range(p.n_layers): model.layers[i].wq = read_tensor(f'blk.{i}.attn_q', p.dim, p.dim)
+    for i in range(p.n_layers): model.layers[i].wk = read_tensor(f'blk.{i}.attn_k', p.dim, p.dim)
+    for i in range(p.n_layers): model.layers[i].wv = read_tensor(f'blk.{i}.attn_v', p.dim, p.dim)
+    for i in range(p.n_layers): model.layers[i].wo = read_tensor(f'blk.{i}.attn_output', p.dim, p.dim)
+    for i in range(p.n_layers): model.layers[i].ffn_norm = read_tensor(f'blk.{i}.ffn_norm', p.dim)
+    for i in range(p.n_layers): model.layers[i].w1 = read_tensor(f'blk.{i}.ffn_gate', p.dim, p.hidden_dim)
+    for i in range(p.n_layers): model.layers[i].w2 = read_tensor(f'blk.{i}.ffn_down', p.hidden_dim, p.dim)
+    for i in range(p.n_layers): model.layers[i].w3 = read_tensor(f'blk.{i}.ffn_up', p.dim, p.hidden_dim)
+    model.output_norm = read_tensor('output_norm', p.dim)
+    read_tensor('freq_cis_real', p.seq_len, p.head_size // 2) # Discard
+    read_tensor('freq_cis_imag', p.seq_len, p.head_size // 2) # Discard
+    
+    if shared_weights:
+        # copy(np.ascontiguousarray(numpy(w.token_embedding_table).transpose()), w.wcls)
+        model.output = model.tok_embeddings
+        # model.output = new_tensor(model.ctx, copy(np.ascontiguousarray(numpy(w.tok_embeddings)), w.output)
+    else:
+        model.output = read_tensor('output', p.dim, p.vocab_size)
+
+    return model
 
 def read_format(f, fmt): return struct.unpack_from(fmt, f.read(struct.calcsize(fmt)))
 
@@ -719,11 +747,12 @@ def run(
     print(config)
 
     # tensor_type = lib.GGML_TYPE_Q5_K
-    tensor_type = lib.GGML_TYPE_F32
+    # tensor_type = lib.GGML_TYPE_F32
     # tensor_type = lib.GGML_TYPE_F16
 
-    weights = LlamaWeights(config, tensor_type, shared_weights)
-    checkpoint_init_weights(mm, config, weights)
+    # weights = LlamaWeights(config, tensor_type, shared_weights)
+    model = read_llama2c_model(mm, config, shared_weights)
+    # checkpoint_init_weights(mm, config, weights)
     
     mm.close()
     os.close(fd)
@@ -782,7 +811,7 @@ def run(
             all_logits=not skip_unused,
             tokens=np.array(tokens, dtype=np.int32))
     
-    lctx = LlamaContext(config, kv_cache, weights)
+    lctx = LlamaContext(config, kv_cache, model)
 
     if prompt_tokens:
         print("prompt token count: ", len(prompt_tokens), file=sys.stderr)
