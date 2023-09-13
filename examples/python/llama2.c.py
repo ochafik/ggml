@@ -621,7 +621,6 @@ def read_llama2c_model(mm, p: Config, shared_weights: bool) -> LlamaModel:
     model.layers = [LlamaLayer() for _ in range(p.n_layers)]
 
     def read_tensor(name: str, *shape: Tuple[int, ...]):
-        # shape = tuple([tensor.ne[i] for i in range(tensor.n_dims)])
         nbytes = np.prod(shape) * ffi.sizeof('float')
         # TODO: make type depend on name as in quantization routine
         ttype = lib.GGML_TYPE_F32
