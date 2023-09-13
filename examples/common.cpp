@@ -1,3 +1,5 @@
+#define _USE_MATH_DEFINES // for M_PI
+
 #include "common.h"
 
 // third-party utilities
@@ -12,10 +14,6 @@
 #include <locale>
 #include <codecvt>
 #include <sstream>
-
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
 
 #if defined(_MSC_VER)
 #pragma warning(disable: 4244 4267) // possible loss of data
@@ -765,4 +763,47 @@ float similarity(const std::string & s0, const std::string & s1) {
     const float dist = prevCol[len1 - 1];
 
     return 1.0f - (dist / std::max(s0.size(), s1.size()));
+}
+
+bool sam_params_parse(int argc, char ** argv, sam_params & params) {
+    for (int i = 1; i < argc; i++) {
+        std::string arg = argv[i];
+
+        if (arg == "-s" || arg == "--seed") {
+            params.seed = std::stoi(argv[++i]);
+        } else if (arg == "-t" || arg == "--threads") {
+            params.n_threads = std::stoi(argv[++i]);
+        } else if (arg == "-m" || arg == "--model") {
+            params.model = argv[++i];
+        } else if (arg == "-i" || arg == "--inp") {
+            params.fname_inp = argv[++i];
+        } else if (arg == "-o" || arg == "--out") {
+            params.fname_out = argv[++i];
+        } else if (arg == "-h" || arg == "--help") {
+            sam_print_usage(argc, argv, params);
+            exit(0);
+        } else {
+            fprintf(stderr, "error: unknown argument: %s\n", arg.c_str());
+            sam_print_usage(argc, argv, params);
+            exit(0);
+        }
+    }
+
+    return true;
+}
+
+void sam_print_usage(int /*argc*/, char ** argv, const sam_params & params) {
+    fprintf(stderr, "usage: %s [options]\n", argv[0]);
+    fprintf(stderr, "\n");
+    fprintf(stderr, "options:\n");
+    fprintf(stderr, "  -h, --help            show this help message and exit\n");
+    fprintf(stderr, "  -s SEED, --seed SEED  RNG seed (default: -1)\n");
+    fprintf(stderr, "  -t N, --threads N     number of threads to use during computation (default: %d)\n", params.n_threads);
+    fprintf(stderr, "  -m FNAME, --model FNAME\n");
+    fprintf(stderr, "                        model path (default: %s)\n", params.model.c_str());
+    fprintf(stderr, "  -i FNAME, --inp FNAME\n");
+    fprintf(stderr, "                        input file (default: %s)\n", params.fname_inp.c_str());
+    fprintf(stderr, "  -o FNAME, --out FNAME\n");
+    fprintf(stderr, "                        output file (default: %s)\n", params.fname_out.c_str());
+    fprintf(stderr, "\n");
 }
