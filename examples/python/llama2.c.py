@@ -20,6 +20,8 @@ from pathlib import Path
 import struct, os, mmap, math, sys, time, bisect
 from collections import namedtuple
 import scipy as sp
+from enum import Enum
+import re
 
 MMAP = os.environ.get('MMAP', '0') == '1'
 ALLOC = os.environ.get('ALLOC', '0') == '1'
@@ -616,6 +618,182 @@ def new_tensor(ctx, ttype, *shape: list[int]):
     else:
         raise Exception(f'Bad shape: {shape}')
 
+class LLMArch(Enum):
+    LLM_ARCH_LLAMA = 0,
+    LLM_ARCH_FALCON = 1
+    # LLM_ARCH_GPT2 = 2,
+    # LLM_ARCH_GPTJ = 3,
+    # LLM_ARCH_GPTNEOX = 4,
+    # LLM_ARCH_MPT = 5,
+    # LLM_ARCH_UNKNOWN = 6
+
+    # model file types
+class LlamaFType(Enum):
+    LLAMA_FTYPE_ALL_F32              = 0,
+    LLAMA_FTYPE_MOSTLY_F16           = 1, # except 1d tensors
+    LLAMA_FTYPE_MOSTLY_Q4_0          = 2, # except 1d tensors
+    LLAMA_FTYPE_MOSTLY_Q4_1          = 3, # except 1d tensors
+    LLAMA_FTYPE_MOSTLY_Q4_1_SOME_F16 = 4, # tok_embeddings.weight and output.weight are F16
+    # LLAMA_FTYPE_MOSTLY_Q4_2       = 5, # support has been removed
+    # LLAMA_FTYPE_MOSTLY_Q4_3       = 6, # support has been removed
+    LLAMA_FTYPE_MOSTLY_Q8_0          = 7, # except 1d tensors
+    LLAMA_FTYPE_MOSTLY_Q5_0          = 8, # except 1d tensors
+    LLAMA_FTYPE_MOSTLY_Q5_1          = 9, # except 1d tensors
+    LLAMA_FTYPE_MOSTLY_Q2_K          = 10,# except 1d tensors
+    LLAMA_FTYPE_MOSTLY_Q3_K_S        = 11,# except 1d tensors
+    LLAMA_FTYPE_MOSTLY_Q3_K_M        = 12,# except 1d tensors
+    LLAMA_FTYPE_MOSTLY_Q3_K_L        = 13,# except 1d tensors
+    LLAMA_FTYPE_MOSTLY_Q4_K_S        = 14,# except 1d tensors
+    LLAMA_FTYPE_MOSTLY_Q4_K_M        = 15,# except 1d tensors
+    LLAMA_FTYPE_MOSTLY_Q5_K_S        = 16,# except 1d tensors
+    LLAMA_FTYPE_MOSTLY_Q5_K_M        = 17,# except 1d tensors
+    LLAMA_FTYPE_MOSTLY_Q6_K          = 18,# except 1d tensors
+    LLAMA_FTYPE_GUESSED = 1024, # not specified in the model file
+
+default_quantized_types = {
+    LlamaFType.LLAMA_FTYPE_MOSTLY_Q4_0: lib.GGML_TYPE_Q4_0,
+    LlamaFType.LLAMA_FTYPE_MOSTLY_Q4_1: lib.GGML_TYPE_Q4_1,
+    LlamaFType.LLAMA_FTYPE_MOSTLY_Q5_0: lib.GGML_TYPE_Q5_0,
+    LlamaFType.LLAMA_FTYPE_MOSTLY_Q5_1: lib.GGML_TYPE_Q5_1,
+    LlamaFType.LLAMA_FTYPE_MOSTLY_Q8_0: lib.GGML_TYPE_Q8_0,
+    LlamaFType.LLAMA_FTYPE_MOSTLY_F16:  lib.GGML_TYPE_F16,
+    LlamaFType.LLAMA_FTYPE_ALL_F32:     lib.GGML_TYPE_F32,
+    LlamaFType.LLAMA_FTYPE_MOSTLY_Q2_K:   lib.GGML_TYPE_Q2_K,
+    LlamaFType.LLAMA_FTYPE_MOSTLY_Q3_K_S: lib.GGML_TYPE_Q3_K,
+    LlamaFType.LLAMA_FTYPE_MOSTLY_Q3_K_M: lib.GGML_TYPE_Q3_K,
+    LlamaFType.LLAMA_FTYPE_MOSTLY_Q3_K_L: lib.GGML_TYPE_Q3_K,
+    LlamaFType.LLAMA_FTYPE_MOSTLY_Q4_K_S: lib.GGML_TYPE_Q4_K,
+    LlamaFType.LLAMA_FTYPE_MOSTLY_Q4_K_M: lib.GGML_TYPE_Q4_K,
+    LlamaFType.LLAMA_FTYPE_MOSTLY_Q5_K_S: lib.GGML_TYPE_Q5_K,
+    LlamaFType.LLAMA_FTYPE_MOSTLY_Q5_K_M: lib.GGML_TYPE_Q5_K,
+    LlamaFType.LLAMA_FTYPE_MOSTLY_Q6_K:   lib.GGML_TYPE_Q6_K,
+}
+
+quant_options = {
+    "Q4_0":   LlamaFType.LLAMA_FTYPE_MOSTLY_Q4_0,
+    "Q4_1":   LlamaFType.LLAMA_FTYPE_MOSTLY_Q4_1,
+    "Q5_0":   LlamaFType.LLAMA_FTYPE_MOSTLY_Q5_0,
+    "Q5_1":   LlamaFType.LLAMA_FTYPE_MOSTLY_Q5_1,
+    "Q2_K":   LlamaFType.LLAMA_FTYPE_MOSTLY_Q2_K,
+    "Q3_K":   LlamaFType.LLAMA_FTYPE_MOSTLY_Q3_K_M,
+    "Q3_K_S": LlamaFType.LLAMA_FTYPE_MOSTLY_Q3_K_S,
+    "Q3_K_M": LlamaFType.LLAMA_FTYPE_MOSTLY_Q3_K_M,
+    "Q3_K_L": LlamaFType.LLAMA_FTYPE_MOSTLY_Q3_K_L,
+    "Q4_K":   LlamaFType.LLAMA_FTYPE_MOSTLY_Q4_K_M,
+    "Q4_K_S": LlamaFType.LLAMA_FTYPE_MOSTLY_Q4_K_S,
+    "Q4_K_M": LlamaFType.LLAMA_FTYPE_MOSTLY_Q4_K_M,
+    "Q5_K":   LlamaFType.LLAMA_FTYPE_MOSTLY_Q5_K_M,
+    "Q5_K_S": LlamaFType.LLAMA_FTYPE_MOSTLY_Q5_K_S,
+    "Q5_K_M": LlamaFType.LLAMA_FTYPE_MOSTLY_Q5_K_M,
+    "Q6_K":   LlamaFType.LLAMA_FTYPE_MOSTLY_Q6_K,
+    "Q8_0":   LlamaFType.LLAMA_FTYPE_MOSTLY_Q8_0,
+    "F16":    LlamaFType.LLAMA_FTYPE_MOSTLY_F16,
+    "F32":    LlamaFType.LLAMA_FTYPE_ALL_F32,
+    "COPY":   LlamaFType.LLAMA_FTYPE_ALL_F32,
+}
+
+def use_more_bits(i_layer: int, num_layers: int) -> bool:
+    return i_layer < num_layers/8 or i_layer >= 7*num_layers/8 or (i_layer - num_layers/8)%3 == 2
+
+def pick_tensor_type(name, ftype: LlamaFType, arch: LLMArch, existing_type, shape: list[int], QK_K: int, model: LlamaModel, config: Config):
+    m = re.search(r'\.(\d+)\.', name)
+    i_layer = None if m is None else int(m.group(1))
+
+    quantized_type = default_quantized_types[ftype]
+    new_type = quantized_type
+    
+    if not name.endswith('.weight') or len(shape) != 2:
+        return existing_type
+    
+    (nx, ny) = shape
+                
+    if name == "output.weight":
+        if arch == LlamaModel.LLM_ARCH_FALCON or nx % QK_K != 0:
+            new_type = lib.GGML_TYPE_Q8_0
+        elif quantized_type != lib.GGML_TYPE_Q8_0:
+            return lib.GGML_TYPE_Q6_K
+    elif name.endswith(".attn_v.weight"):
+
+        if ftype == LlamaFType.LLAMA_FTYPE_MOSTLY_Q2_K:
+            return lib.GGML_TYPE_Q3_K
+        elif ftype == LlamaFType.LLAMA_FTYPE_MOSTLY_Q3_K_M:
+            return lib.GGML_TYPE_Q5_K if i_layer < 2 else lib.GGML_TYPE_Q4_K
+
+        elif ftype == LlamaFType.LLAMA_FTYPE_MOSTLY_Q3_K_L: return lib.GGML_TYPE_Q5_K
+        elif (ftype == LlamaFType.LLAMA_FTYPE_MOSTLY_Q4_K_M or ftype == LlamaFType.LLAMA_FTYPE_MOSTLY_Q5_K_M) and \
+                use_more_bits(i_layer, config.n_layers): return lib.GGML_TYPE_Q6_K
+        elif ftype == LlamaFType.LLAMA_FTYPE_MOSTLY_Q4_K_S and i_layer < 4: return lib.GGML_TYPE_Q5_K
+        elif QK_K == 64 and (ftype == LlamaFType.LLAMA_FTYPE_MOSTLY_Q4_K_S or ftype == LlamaFType.LLAMA_FTYPE_MOSTLY_Q3_K_S) and \
+                (i_layer < config.n_layers/8 or i_layer >= 7*config.n_layers/8): return lib.GGML_TYPE_Q6_K
+        if config.n_layers == 80: # MODEL_70B
+            # In the 70B model we have 8 heads sharing the same attn_v weights. As a result, the attn_v.weight tensor is
+            # 8x smaller compared to attn_q.weight. Hence, we can get a nice boost in quantization accuracy with
+            # nearly negligible increase in model size by quantizing this tensor with more bits:
+            if new_type == lib.GGML_TYPE_Q3_K or new_type == lib.GGML_TYPE_Q4_K: return lib.GGML_TYPE_Q5_K
+    elif name.find("ffn_down.weight"):
+        if ftype == LlamaFType.LLAMA_FTYPE_MOSTLY_Q2_K: return lib.GGML_TYPE_Q3_K
+        elif ftype == LlamaFType.LLAMA_FTYPE_MOSTLY_Q3_K_M:
+            return lib.GGML_TYPE_Q5_K if i_layer < 2 \
+                        else lib.GGML_TYPE_Q4_K if model.arch != LLMArch.LLM_ARCH_FALCON or use_more_bits(i_layer, config.n_layers) \
+                        else lib.GGML_TYPE_Q3_K
+
+        elif ftype == LlamaFType.LLAMA_FTYPE_MOSTLY_Q3_K_L:
+            return lib.GGML_TYPE_Q4_K if model.arch == LLMArch.LLM_ARCH_FALCON else lib.GGML_TYPE_Q5_K
+
+        elif ftype == LlamaFType.LLAMA_FTYPE_MOSTLY_Q4_K_M:
+            if model.arch == LLMArch.LLM_ARCH_FALCON:
+                return lib.GGML_TYPE_Q6_K if i_layer < 2 \
+                            else lib.GGML_TYPE_Q5_K if use_more_bits(i_layer, config.n_layers) \
+                                else lib.GGML_TYPE_Q4_K
+            else:
+                if use_more_bits(i_layer, config.n_layers): return lib.GGML_TYPE_Q6_K
+
+
+        elif ftype == LlamaFType.LLAMA_FTYPE_MOSTLY_Q5_K_M and use_more_bits(i_layer, config.n_layers): return lib.GGML_TYPE_Q6_K
+        elif ftype == LlamaFType.LLAMA_FTYPE_MOSTLY_Q4_K_S and model.arch != LLMArch.LLM_ARCH_FALCON and i_layer < 4:
+            return lib.GGML_TYPE_Q5_K
+
+    elif name.endswith(".attn_output.weight"):
+        if model.arch != LLMArch.LLM_ARCH_FALCON:
+            if ftype == LlamaFType.LLAMA_FTYPE_MOSTLY_Q2_K: return lib.GGML_TYPE_Q3_K
+            elif ftype == LlamaFType.LLAMA_FTYPE_MOSTLY_Q3_K_M: return lib.GGML_TYPE_Q4_K
+            elif ftype == LlamaFType.LLAMA_FTYPE_MOSTLY_Q3_K_L: return lib.GGML_TYPE_Q5_K
+        else:
+            if ftype == LlamaFType.LLAMA_FTYPE_MOSTLY_Q3_K_L: return lib.GGML_TYPE_Q4_K
+
+
+    elif name.endswith(".attn_qkv.weight"):
+        if ftype == LlamaFType.LLAMA_FTYPE_MOSTLY_Q3_K_M or ftype == LlamaFType.LLAMA_FTYPE_MOSTLY_Q3_K_L: return lib.GGML_TYPE_Q4_K
+        elif ftype == LlamaFType.LLAMA_FTYPE_MOSTLY_Q4_K_M: return lib.GGML_TYPE_Q5_K
+        elif ftype == LlamaFType.LLAMA_FTYPE_MOSTLY_Q5_K_M: return lib.GGML_TYPE_Q6_K
+
+    elif name.endswith(".ffn_gate.weight") or name.endswith(".ffn_up.weight"):
+        if ftype == LlamaFType.LLAMA_FTYPE_MOSTLY_Q2_K: return lib.GGML_TYPE_Q3_K
+
+    # This can be used to reduce the size of the Q5_K_S model.
+    # The associated PPL increase is fully in line with the size reduction
+    #else {
+    #    if (ftype == LlamaFType.LLAMA_FTYPE_MOSTLY_Q5_K_S) return lib.GGML_TYPE_Q4_K;
+    #}
+    convert_incompatible_tensor = False
+    if new_type == lib.GGML_TYPE_Q2_K or new_type == lib.GGML_TYPE_Q3_K or new_type == lib.GGML_TYPE_Q4_K or \
+        new_type == lib.GGML_TYPE_Q5_K or new_type == lib.GGML_TYPE_Q6_K:
+        if nx % QK_K != 0:
+            # LLAMA_LOG_WARN("\n\n%s : tensor cols %d x %d are not divisible by %d, required for k-quants\n", __func__, nx, ny, QK_K);
+            convert_incompatible_tensor = True
+            
+    if convert_incompatible_tensor:
+        if name == "output.weight":
+            return lib.GGML_TYPE_F16 # Fall back to F16 instead of just failing.
+            # LLAMA_LOG_WARN("F16 will be used for this tensor instead.\n")
+        elif name == "token_embd.weight":
+            return lib.GGML_TYPE_Q4_0 # Fall back to Q4_0 instead of just failing.
+            # LLAMA_LOG_WARN("Q4_0 will be used for this tensor instead.\n")
+        else:
+            raise ValueError("Unsupported tensor size encountered")
+
+    return quantized_type
+
 def read_llama2c_model(mm, p: Config, shared_weights: bool) -> LlamaModel:
     model = LlamaModel(ctx = init(mem_size=30*1024*1024*1024))
     model.layers = [LlamaLayer() for _ in range(p.n_layers)]
@@ -631,17 +809,17 @@ def read_llama2c_model(mm, p: Config, shared_weights: bool) -> LlamaModel:
         copy(array, tensor)
         return tensor
         
-    model.tok_embeddings = read_tensor("token_embd", p.dim, p.vocab_size)
-    for i in range(p.n_layers): model.layers[i].attn_norm = read_tensor(f'blk.{i}.attn_norm', p.dim)
-    for i in range(p.n_layers): model.layers[i].wq = read_tensor(f'blk.{i}.attn_q', p.dim, p.dim)
-    for i in range(p.n_layers): model.layers[i].wk = read_tensor(f'blk.{i}.attn_k', p.dim, p.dim)
-    for i in range(p.n_layers): model.layers[i].wv = read_tensor(f'blk.{i}.attn_v', p.dim, p.dim)
-    for i in range(p.n_layers): model.layers[i].wo = read_tensor(f'blk.{i}.attn_output', p.dim, p.dim)
-    for i in range(p.n_layers): model.layers[i].ffn_norm = read_tensor(f'blk.{i}.ffn_norm', p.dim)
-    for i in range(p.n_layers): model.layers[i].w1 = read_tensor(f'blk.{i}.ffn_gate', p.dim, p.hidden_dim)
-    for i in range(p.n_layers): model.layers[i].w2 = read_tensor(f'blk.{i}.ffn_down', p.hidden_dim, p.dim)
-    for i in range(p.n_layers): model.layers[i].w3 = read_tensor(f'blk.{i}.ffn_up', p.dim, p.hidden_dim)
-    model.output_norm = read_tensor('output_norm', p.dim)
+    model.tok_embeddings = read_tensor("token_embd.weight", p.dim, p.vocab_size)
+    for i in range(p.n_layers): model.layers[i].attn_norm = read_tensor(f'blk.{i}.attn_norm.weight', p.dim)
+    for i in range(p.n_layers): model.layers[i].wq = read_tensor(f'blk.{i}.attn_q.weight', p.dim, p.dim)
+    for i in range(p.n_layers): model.layers[i].wk = read_tensor(f'blk.{i}.attn_k.weight', p.dim, p.dim)
+    for i in range(p.n_layers): model.layers[i].wv = read_tensor(f'blk.{i}.attn_v.weight', p.dim, p.dim)
+    for i in range(p.n_layers): model.layers[i].wo = read_tensor(f'blk.{i}.attn_output.weight', p.dim, p.dim)
+    for i in range(p.n_layers): model.layers[i].ffn_norm = read_tensor(f'blk.{i}.ffn_norm.weight', p.dim)
+    for i in range(p.n_layers): model.layers[i].w1 = read_tensor(f'blk.{i}.ffn_gate.weight', p.dim, p.hidden_dim)
+    for i in range(p.n_layers): model.layers[i].w2 = read_tensor(f'blk.{i}.ffn_down.weight', p.hidden_dim, p.dim)
+    for i in range(p.n_layers): model.layers[i].w3 = read_tensor(f'blk.{i}.ffn_up.weight', p.dim, p.hidden_dim)
+    model.output_norm = read_tensor('output_norm.weight', p.dim)
     read_tensor('freq_cis_real', p.seq_len, p.head_size // 2) # Discard
     read_tensor('freq_cis_imag', p.seq_len, p.head_size // 2) # Discard
     
@@ -650,13 +828,14 @@ def read_llama2c_model(mm, p: Config, shared_weights: bool) -> LlamaModel:
         model.output = model.tok_embeddings
         # model.output = new_tensor(model.ctx, copy(np.ascontiguousarray(numpy(w.tok_embeddings)), w.output)
     else:
-        model.output = read_tensor('output', p.dim, p.vocab_size)
+        model.output = read_tensor('output.weight', p.dim, p.vocab_size)
 
     return model
 
-def read_format(f, fmt): return struct.unpack_from(fmt, f.read(struct.calcsize(fmt)))
+def read_format(f, fmt):
+    return struct.unpack_from(fmt, f.read(struct.calcsize(fmt)))
 
-def read_vocab(tokenizer_model: Path, config: Config) -> Vocabulary:
+def read_llama2c_vocab(tokenizer_model: Path, config: Config) -> Vocabulary:
     with tokenizer_model.open('rb') as fd:
         max_token_length = read_format(fd, '<i')[0]
         vocab = []
@@ -756,7 +935,7 @@ def run(
     mm.close()
     os.close(fd)
 
-    vocab = read_vocab(tokenizer_model, config)
+    vocab = read_llama2c_vocab(tokenizer_model, config)
     kv_cache = KVCache(config,
                     #  lib.GGML_TYPE_Q4_0)
                     #  lib.GGML_TYPE_Q5_K)
