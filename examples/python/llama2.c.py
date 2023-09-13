@@ -147,7 +147,7 @@ class EvalParams:
     # n_tokens: int # number of tokens
     n_past: int # the context size so far
     
-    tokens: Optional[list[int]] = None # new batch of tokens to process
+    tokens: Optional[np.ndarray] = None # new batch of tokens to process
     embd: Optional[np.ndarray] = None # embeddings input
 
     # TODO: options:
@@ -164,7 +164,13 @@ class EvalParams:
 
     @property
     def n_tokens(self):
-        return len(self.tokens) if self.tokens else self.embd.shape[1]
+        if self.tokens is not None:
+            (N,) = self.tokens.shape
+            return N
+        else:
+            (dim, N) = self.embd.shape
+            assert dim == self.n_embd
+            return N
 
 @dataclass
 class GraphResult:
@@ -197,7 +203,7 @@ class LlamaContext:
             result = self.llama_build_graph(EvalParams(
                 all_logits=False, temperature=1.0,
                 n_threads=1, n_past=0,
-                tokens=[llama_token_bos() for _ in range(p.seq_len)]))
+                tokens=np.array([llama_token_bos() for _ in range(p.seq_len)], dtype=np.int32)))
             
             if METAL and self.ctx_metal:
                 lib.ggml_metal_graph_find_concurrency(self.ctx_metal, result.graph, False)
@@ -327,7 +333,7 @@ class LlamaContext:
         return result
 
     def llama_build_graph(self, ep: EvalParams) -> GraphResult:
-        assert ((not ep.tokens and ep.embd) or (ep.tokens and not ep.embd))
+        assert ((ep.tokens is None and ep.embd) or (ep.tokens is not None and not ep.embd))
 
         p = self.p
         w = self.model
@@ -365,18 +371,19 @@ class LlamaContext:
         try:
             gf = lib.ggml_new_graph(ctx0)
 
-            if ep.tokens:
+            if ep.tokens is not None:
                 inp_tokens = lib.ggml_new_tensor_1d(ctx0, lib.GGML_TYPE_I32, N)
 
                 if prepare_copy(inp_tokens):
-                    copy(np.array(ep.tokens, dtype=np.int32), inp_tokens)
+                    copy(ep.tokens, inp_tokens)
                     # ffi.memmove(inp_tokens.data, np.array(ep.tokens, dtype=int), N*lib.ggml_element_size(inp_tokens))
 
                 inpL = lib.ggml_get_rows(ctx0, w.token_embedding_table, inp_tokens)
             else:
                 inpL = lib.ggml_new_tensor_2d(ctx0, lib.GGML_TYPE_F32, n_embd, N)
                 if prepare_copy(inpL):
-                    ffi.memmove(inpL.data, ffi.frombuffer(ep.embd), N * n_embd * lib.ggml_element_size(inpL))
+                    copy(np.array(ep.embd, dtype=float), inpL)
+                    # ffi.memmove(inpL.data, ffi.frombuffer(ep.embd), N * n_embd * lib.ggml_element_size(inpL))
 
             assert _get_shape(inpL) == (n_embd, N), f'Bad input shape: {_get_shape(inpL)} != {(n_embd, N)}'
 
@@ -615,7 +622,8 @@ def checkpoint_init_weights(mm, p: Config, w: LlamaWeights):
     read_tensor('freq_cis_real', mm, w.freq_cis_real)
     read_tensor('freq_cis_imag', mm, w.freq_cis_imag)
     if w.shared_weights:
-        copy(np.ascontiguousarray(numpy(w.token_embedding_table).transpose()), w.wcls)
+        # copy(np.ascontiguousarray(numpy(w.token_embedding_table).transpose()), w.wcls)
+        copy(np.ascontiguousarray(numpy(w.token_embedding_table)), w.wcls)
     else:
         read_tensor('wcls', mm, w.wcls)
 
@@ -722,8 +730,10 @@ def run(
 
     vocab = read_vocab(tokenizer_model, config)
     kv_cache = KVCache(config,
+                    #  lib.GGML_TYPE_Q4_0)
                     #  lib.GGML_TYPE_Q5_K)
-                     tensor_type)
+                    lib.GGML_TYPE_F16)
+                    #  tensor_type)
     probindex = [ProbIndex(-1.0, -1) for i in range(config.vocab_size)]
 
     # if METAL:
@@ -770,7 +780,7 @@ def run(
             n_threads=n_threads,
             temperature=temperature,
             all_logits=not skip_unused,
-            tokens=tokens)
+            tokens=np.array(tokens, dtype=np.int32))
     
     lctx = LlamaContext(config, kv_cache, weights)
 
