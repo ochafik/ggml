@@ -6,7 +6,7 @@ sys.path.extend(['.', '..']) # for pycparser
 
 from pycparser import c_ast, parse_file, CParser
 import pycparser.plyparser
-from pycparser.c_ast import PtrDecl, TypeDecl, FuncDecl, EllipsisParam, IdentifierType, Struct, Enum, Typedef
+from pycparser.c_ast import PtrDecl, ArrayDecl, TypeDecl, FuncDecl, EllipsisParam, IdentifierType, Struct, Enum, Typedef
 from typing import Tuple
 
 __c_type_to_python_type = {
@@ -22,7 +22,7 @@ __c_type_to_python_type = {
 }
 
 def format_type(t: TypeDecl):
-    if isinstance(t, PtrDecl) or isinstance(t, Struct):
+    if isinstance(t, (PtrDecl, Struct, ArrayDecl)):
         return 'ffi.CData'
     if isinstance(t, Enum):
         return 'int'
@@ -79,6 +79,8 @@ class PythonStubFuncDeclVisitor(c_ast.NodeVisitor):
                 if new_name not in argnames: return new_name
                 i += 1
 
+        if node.args is None:
+            return
         for a in node.args.params:
             if isinstance(a, EllipsisParam):
                 arg_name = gen_name('args')

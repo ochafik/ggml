@@ -4,11 +4,16 @@
 */
 
 #include "ggml.h"
-#include "ggml-metal.h"
-#include "ggml-opencl.h"
 
-// Headers below are currently only present in the llama.cpp repository, comment them out if you don't have them.
-#include "k_quants.h"
 #include "ggml-alloc.h"
+#include "ggml-backend.h"
+#include "ggml-common.h"
 #include "ggml-cuda.h"
-#include "ggml-mpi.h"
+#include "ggml-kompute.h"
+#include "ggml-metal.h"
+// #include "ggml-mpi.h"
+#include "ggml-opencl.h"
+#include "ggml-quants.h"
+#include "ggml-rpc.h"
+#include "ggml-sycl.h"
+#include "ggml-vulkan.h"
