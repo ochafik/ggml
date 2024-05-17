@@ -29,8 +29,13 @@ def format_type(t: TypeDecl):
     if isinstance(t, TypeDecl):
         return format_type(t.type)
     if isinstance(t, IdentifierType):
-        assert len(t.names) == 1, f'Expected a single name, got {t.names}'
-        return __c_type_to_python_type.get(t.names[0]) or 'ffi.CData'
+        if len(t.names) == 2 and t.names[0] == 'unsigned':
+            name = t.names[1]
+        elif len(t.names) == 1:
+            name = t.names[0]
+        else:
+            raise Exception(f'Expected a single name, got {t.names}')
+        return __c_type_to_python_type.get(name) or 'ffi.CData'
     return t.name
 
 class PythonStubFuncDeclVisitor(c_ast.NodeVisitor):

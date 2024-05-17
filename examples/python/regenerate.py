@@ -4,20 +4,26 @@
 # so we help it a bit (e.g. replace sizeof expressions with their value, remove exotic syntax found in Darwin headers).
 import os, sys, re, subprocess
 import cffi
-import pycparser_fake_libc
 from stubs import generate_stubs
 
 API = os.environ.get('API', 'api.h')
 CC = os.environ.get('CC') or 'gcc'
 C_INCLUDE_DIR = os.environ.get('C_INCLUDE_DIR', '../../../llama.cpp')
 CPPFLAGS = [
-    "-I", C_INCLUDE_DIR,
+    '-I', C_INCLUDE_DIR,
+    '-D_Nullable=',
+    '-D__asm(x)=',
     '-D__attribute__(x)=',
     '-D_Static_assert(x, m)=',
+    # '-D__fp16=uint16_t',  # pycparser doesn't support __fp16
 ] + [x for x in os.environ.get('CPPFLAGS', '').split(' ') if x != '']
 
-try: header = subprocess.run([CC, "-I", pycparser_fake_libc.directory, "-E", *CPPFLAGS, API], capture_output=True, text=True, check=True).stdout
+try: header = subprocess.run([
+    CC, '-U__GNUC__', '-E', *CPPFLAGS, API
+], capture_output=True, text=True, check=True).stdout
 except subprocess.CalledProcessError as e: print(f'{e.stderr}\n{e}', file=sys.stderr); raise
+
+header = 'typedef int va_list;\n' + header
 
 # Replace constant size expressions w/ their value (compile & run a mini exe for each, because why not).
 # First, extract anyting *inside* square brackets and anything that looks like a sizeof call.
