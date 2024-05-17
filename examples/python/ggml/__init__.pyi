@@ -430,6 +430,184 @@ class lib:
   def GGUF_TYPE_UINT64(self) -> int: ...
   @property
   def GGUF_TYPE_UINT8(self) -> int: ...
+  @property
+  def LLAMA_FTYPE_ALL_F32(self) -> int: ...
+  @property
+  def LLAMA_FTYPE_GUESSED(self) -> int: ...
+  @property
+  def LLAMA_FTYPE_MOSTLY_BF16(self) -> int: ...
+  @property
+  def LLAMA_FTYPE_MOSTLY_F16(self) -> int: ...
+  @property
+  def LLAMA_FTYPE_MOSTLY_IQ1_M(self) -> int: ...
+  @property
+  def LLAMA_FTYPE_MOSTLY_IQ1_S(self) -> int: ...
+  @property
+  def LLAMA_FTYPE_MOSTLY_IQ2_M(self) -> int: ...
+  @property
+  def LLAMA_FTYPE_MOSTLY_IQ2_S(self) -> int: ...
+  @property
+  def LLAMA_FTYPE_MOSTLY_IQ2_XS(self) -> int: ...
+  @property
+  def LLAMA_FTYPE_MOSTLY_IQ2_XXS(self) -> int: ...
+  @property
+  def LLAMA_FTYPE_MOSTLY_IQ3_M(self) -> int: ...
+  @property
+  def LLAMA_FTYPE_MOSTLY_IQ3_S(self) -> int: ...
+  @property
+  def LLAMA_FTYPE_MOSTLY_IQ3_XS(self) -> int: ...
+  @property
+  def LLAMA_FTYPE_MOSTLY_IQ3_XXS(self) -> int: ...
+  @property
+  def LLAMA_FTYPE_MOSTLY_IQ4_NL(self) -> int: ...
+  @property
+  def LLAMA_FTYPE_MOSTLY_IQ4_XS(self) -> int: ...
+  @property
+  def LLAMA_FTYPE_MOSTLY_Q2_K(self) -> int: ...
+  @property
+  def LLAMA_FTYPE_MOSTLY_Q2_K_S(self) -> int: ...
+  @property
+  def LLAMA_FTYPE_MOSTLY_Q3_K_L(self) -> int: ...
+  @property
+  def LLAMA_FTYPE_MOSTLY_Q3_K_M(self) -> int: ...
+  @property
+  def LLAMA_FTYPE_MOSTLY_Q3_K_S(self) -> int: ...
+  @property
+  def LLAMA_FTYPE_MOSTLY_Q4_0(self) -> int: ...
+  @property
+  def LLAMA_FTYPE_MOSTLY_Q4_1(self) -> int: ...
+  @property
+  def LLAMA_FTYPE_MOSTLY_Q4_1_SOME_F16(self) -> int: ...
+  @property
+  def LLAMA_FTYPE_MOSTLY_Q4_K_M(self) -> int: ...
+  @property
+  def LLAMA_FTYPE_MOSTLY_Q4_K_S(self) -> int: ...
+  @property
+  def LLAMA_FTYPE_MOSTLY_Q5_0(self) -> int: ...
+  @property
+  def LLAMA_FTYPE_MOSTLY_Q5_1(self) -> int: ...
+  @property
+  def LLAMA_FTYPE_MOSTLY_Q5_K_M(self) -> int: ...
+  @property
+  def LLAMA_FTYPE_MOSTLY_Q5_K_S(self) -> int: ...
+  @property
+  def LLAMA_FTYPE_MOSTLY_Q6_K(self) -> int: ...
+  @property
+  def LLAMA_FTYPE_MOSTLY_Q8_0(self) -> int: ...
+  @property
+  def LLAMA_GRETYPE_ALT(self) -> int: ...
+  @property
+  def LLAMA_GRETYPE_CHAR(self) -> int: ...
+  @property
+  def LLAMA_GRETYPE_CHAR_ALT(self) -> int: ...
+  @property
+  def LLAMA_GRETYPE_CHAR_NOT(self) -> int: ...
+  @property
+  def LLAMA_GRETYPE_CHAR_RNG_UPPER(self) -> int: ...
+  @property
+  def LLAMA_GRETYPE_END(self) -> int: ...
+  @property
+  def LLAMA_GRETYPE_RULE_REF(self) -> int: ...
+  @property
+  def LLAMA_KV_OVERRIDE_TYPE_BOOL(self) -> int: ...
+  @property
+  def LLAMA_KV_OVERRIDE_TYPE_FLOAT(self) -> int: ...
+  @property
+  def LLAMA_KV_OVERRIDE_TYPE_INT(self) -> int: ...
+  @property
+  def LLAMA_KV_OVERRIDE_TYPE_STR(self) -> int: ...
+  @property
+  def LLAMA_POOLING_TYPE_CLS(self) -> int: ...
+  @property
+  def LLAMA_POOLING_TYPE_MEAN(self) -> int: ...
+  @property
+  def LLAMA_POOLING_TYPE_NONE(self) -> int: ...
+  @property
+  def LLAMA_POOLING_TYPE_UNSPECIFIED(self) -> int: ...
+  @property
+  def LLAMA_ROPE_SCALING_TYPE_LINEAR(self) -> int: ...
+  @property
+  def LLAMA_ROPE_SCALING_TYPE_MAX_VALUE(self) -> int: ...
+  @property
+  def LLAMA_ROPE_SCALING_TYPE_NONE(self) -> int: ...
+  @property
+  def LLAMA_ROPE_SCALING_TYPE_UNSPECIFIED(self) -> int: ...
+  @property
+  def LLAMA_ROPE_SCALING_TYPE_YARN(self) -> int: ...
+  @property
+  def LLAMA_ROPE_TYPE_GLM(self) -> int: ...
+  @property
+  def LLAMA_ROPE_TYPE_NEOX(self) -> int: ...
+  @property
+  def LLAMA_ROPE_TYPE_NONE(self) -> int: ...
+  @property
+  def LLAMA_ROPE_TYPE_NORM(self) -> int: ...
+  @property
+  def LLAMA_SPLIT_MODE_LAYER(self) -> int: ...
+  @property
+  def LLAMA_SPLIT_MODE_NONE(self) -> int: ...
+  @property
+  def LLAMA_SPLIT_MODE_ROW(self) -> int: ...
+  @property
+  def LLAMA_TOKEN_TYPE_BYTE(self) -> int: ...
+  @property
+  def LLAMA_TOKEN_TYPE_CONTROL(self) -> int: ...
+  @property
+  def LLAMA_TOKEN_TYPE_NORMAL(self) -> int: ...
+  @property
+  def LLAMA_TOKEN_TYPE_UNDEFINED(self) -> int: ...
+  @property
+  def LLAMA_TOKEN_TYPE_UNKNOWN(self) -> int: ...
+  @property
+  def LLAMA_TOKEN_TYPE_UNUSED(self) -> int: ...
+  @property
+  def LLAMA_TOKEN_TYPE_USER_DEFINED(self) -> int: ...
+  @property
+  def LLAMA_VOCAB_PRE_TYPE_COMMAND_R(self) -> int: ...
+  @property
+  def LLAMA_VOCAB_PRE_TYPE_DBRX(self) -> int: ...
+  @property
+  def LLAMA_VOCAB_PRE_TYPE_DEEPSEEK_CODER(self) -> int: ...
+  @property
+  def LLAMA_VOCAB_PRE_TYPE_DEEPSEEK_LLM(self) -> int: ...
+  @property
+  def LLAMA_VOCAB_PRE_TYPE_DEFAULT(self) -> int: ...
+  @property
+  def LLAMA_VOCAB_PRE_TYPE_FALCON(self) -> int: ...
+  @property
+  def LLAMA_VOCAB_PRE_TYPE_GPT2(self) -> int: ...
+  @property
+  def LLAMA_VOCAB_PRE_TYPE_LLAMA3(self) -> int: ...
+  @property
+  def LLAMA_VOCAB_PRE_TYPE_MPT(self) -> int: ...
+  @property
+  def LLAMA_VOCAB_PRE_TYPE_OLMO(self) -> int: ...
+  @property
+  def LLAMA_VOCAB_PRE_TYPE_QWEN2(self) -> int: ...
+  @property
+  def LLAMA_VOCAB_PRE_TYPE_REFACT(self) -> int: ...
+  @property
+  def LLAMA_VOCAB_PRE_TYPE_STARCODER(self) -> int: ...
+  @property
+  def LLAMA_VOCAB_TYPE_BPE(self) -> int: ...
+  @property
+  def LLAMA_VOCAB_TYPE_NONE(self) -> int: ...
+  @property
+  def LLAMA_VOCAB_TYPE_SPM(self) -> int: ...
+  @property
+  def LLAMA_VOCAB_TYPE_WPM(self) -> int: ...
+  def asprintf(arg: ffi.CData, arg2: ffi.CData, *args2) -> int:
+    """int	 asprintf(char ** __restrict, const char * __restrict, ...) __printflike(2, 3);"""
+    ...
+  def clearerr(arg: ffi.CData) -> None:
+    """void	 clearerr(FILE *);"""
+    ...
+  def ctermid(arg: ffi.CData) -> ffi.CData:
+    """char    *ctermid(char *);"""
+    ...
+  def ctermid_r(arg: ffi.CData) -> ffi.CData:
+    """char	*ctermid_r(char *);"""
+    ...
   def dequantize_row_iq1_m(x: ffi.CData, y: ffi.CData, k: int) -> None:
     """void dequantize_row_iq1_m  (const block_iq1_m   * GGML_RESTRICT x, float * GGML_RESTRICT y, int64_t k);"""
     ...
@@ -493,6 +671,132 @@ class lib:
     ...
   def dequantize_row_q8_K(x: ffi.CData, y: ffi.CData, k: int) -> None:
     """void dequantize_row_q8_K(const block_q8_K * GGML_RESTRICT x, float * GGML_RESTRICT y, int64_t k);"""
+    ...
+  def dprintf(arg: int, arg2: ffi.CData, *args2) -> int:
+    """int	dprintf(int, const char * __restrict, ...) __printflike(2, 3) __OSX_AVAILABLE_STARTING(__MAC_10_7, __IPHONE_4_3);"""
+    ...
+  def fclose(arg: ffi.CData) -> int:
+    """int	 fclose(FILE *);"""
+    ...
+  def fdopen(arg: int, arg2: ffi.CData) -> ffi.CData:
+    """FILE	*fdopen(int, const char *) __DARWIN_ALIAS_STARTING(__MAC_10_6, __IPHONE_2_0, __DARWIN_ALIAS(fdopen));"""
+    ...
+  def feof(arg: ffi.CData) -> int:
+    """int	 feof(FILE *);"""
+    ...
+  def ferror(arg: ffi.CData) -> int:
+    """int	 ferror(FILE *);"""
+    ...
+  def fflush(arg: ffi.CData) -> int:
+    """int	 fflush(FILE *);"""
+    ...
+  def fgetc(arg: ffi.CData) -> int:
+    """int	 fgetc(FILE *);"""
+    ...
+  def fgetln(arg: ffi.CData, arg2: ffi.CData) -> ffi.CData:
+    """char	*fgetln(FILE *, size_t *);"""
+    ...
+  def fgetpos(arg: ffi.CData, arg2: ffi.CData) -> int:
+    """int	 fgetpos(FILE * __restrict, fpos_t *);"""
+    ...
+  def fgets(arg: ffi.CData, arg2: int, arg3: ffi.CData) -> ffi.CData:
+    """char	*fgets(char * __restrict, int, FILE *);"""
+    ...
+  def fileno(arg: ffi.CData) -> int:
+    """int	 fileno(FILE *);"""
+    ...
+  def flockfile(arg: ffi.CData) -> None:
+    """void	 flockfile(FILE *);"""
+    ...
+  def fmemopen(__buf: ffi.CData, __size: int, __mode: ffi.CData) -> ffi.CData:
+    """FILE *fmemopen(void * __restrict __buf, size_t __size, const char * __restrict __mode) __API_AVAILABLE(macos(10.13), ios(11.0), tvos(11.0), watchos(4.0));"""
+    ...
+  def fmtcheck(arg: ffi.CData, arg2: ffi.CData) -> ffi.CData:
+    """__const char *fmtcheck(const char *, const char *) __attribute__((format_arg(2)));"""
+    ...
+  def fopen(__filename: ffi.CData, __mode: ffi.CData) -> ffi.CData:
+    """FILE	*fopen(const char * __restrict __filename, const char * __restrict __mode) __DARWIN_ALIAS_STARTING(__MAC_10_6, __IPHONE_2_0, __DARWIN_ALIAS(fopen));"""
+    ...
+  def fprintf(arg: ffi.CData, arg2: ffi.CData, *args2) -> int:
+    """int	 fprintf(FILE * __restrict, const char * __restrict, ...) __printflike(2, 3);"""
+    ...
+  def fpurge(arg: ffi.CData) -> int:
+    """int	 fpurge(FILE *);"""
+    ...
+  def fputc(arg: int, arg2: ffi.CData) -> int:
+    """int	 fputc(int, FILE *);"""
+    ...
+  def fputs(arg: ffi.CData, arg2: ffi.CData) -> int:
+    """int	 fputs(const char * __restrict, FILE * __restrict) __DARWIN_ALIAS(fputs);"""
+    ...
+  def fread(__ptr: ffi.CData, __size: int, __nitems: int, __stream: ffi.CData) -> int:
+    """size_t	 fread(void * __restrict __ptr, size_t __size, size_t __nitems, FILE * __restrict __stream);"""
+    ...
+  def freopen(arg: ffi.CData, arg2: ffi.CData, arg3: ffi.CData) -> ffi.CData:
+    """
+    FILE	*freopen(const char * __restrict, const char * __restrict,
+                     FILE * __restrict) __DARWIN_ALIAS(freopen);
+    """
+    ...
+  def fscanf(arg: ffi.CData, arg2: ffi.CData, *args2) -> int:
+    """int	 fscanf(FILE * __restrict, const char * __restrict, ...) __scanflike(2, 3);"""
+    ...
+  def fseek(arg: ffi.CData, arg2: int, arg3: int) -> int:
+    """int	 fseek(FILE *, long, int);"""
+    ...
+  def fseeko(__stream: ffi.CData, __offset: ffi.CData, __whence: int) -> int:
+    """int	 fseeko(FILE * __stream, off_t __offset, int __whence);"""
+    ...
+  def fsetpos(arg: ffi.CData, arg2: ffi.CData) -> int:
+    """int	 fsetpos(FILE *, const fpos_t *);"""
+    ...
+  def ftell(arg: ffi.CData) -> int:
+    """long	 ftell(FILE *);"""
+    ...
+  def ftello(__stream: ffi.CData) -> ffi.CData:
+    """off_t	 ftello(FILE * __stream);"""
+    ...
+  def ftrylockfile(arg: ffi.CData) -> int:
+    """int	 ftrylockfile(FILE *);"""
+    ...
+  def funlockfile(arg: ffi.CData) -> None:
+    """void	 funlockfile(FILE *);"""
+    ...
+  def funopen(arg: ffi.CData, arg2: ffi.CData, arg3: ffi.CData, arg4: ffi.CData, arg5: ffi.CData) -> ffi.CData:
+    """
+    FILE	*funopen(const void *,
+                     int (* _Nullable)(void *, char *, int),
+                     int (* _Nullable)(void *, const char *, int),
+                     fpos_t (* _Nullable)(void *, fpos_t, int),
+                     int (* _Nullable)(void *));
+    """
+    ...
+  def fwrite(__ptr: ffi.CData, __size: int, __nitems: int, __stream: ffi.CData) -> int:
+    """size_t	 fwrite(const void * __restrict __ptr, size_t __size, size_t __nitems, FILE * __restrict __stream) __DARWIN_ALIAS(fwrite);"""
+    ...
+  def getc(arg: ffi.CData) -> int:
+    """int	 getc(FILE *);"""
+    ...
+  def getc_unlocked(arg: ffi.CData) -> int:
+    """int	 getc_unlocked(FILE *);"""
+    ...
+  def getchar() -> int:
+    """int	 getchar(void);"""
+    ...
+  def getchar_unlocked() -> int:
+    """int	 getchar_unlocked(void);"""
+    ...
+  def getdelim(__linep: ffi.CData, __linecapp: ffi.CData, __delimiter: int, __stream: ffi.CData) -> ffi.CData:
+    """ssize_t getdelim(char ** __restrict __linep, size_t * __restrict __linecapp, int __delimiter, FILE * __restrict __stream) __OSX_AVAILABLE_STARTING(__MAC_10_7, __IPHONE_4_3);"""
+    ...
+  def getline(__linep: ffi.CData, __linecapp: ffi.CData, __stream: ffi.CData) -> ffi.CData:
+    """ssize_t getline(char ** __restrict __linep, size_t * __restrict __linecapp, FILE * __restrict __stream) __OSX_AVAILABLE_STARTING(__MAC_10_7, __IPHONE_4_3);"""
+    ...
+  def gets(arg: ffi.CData) -> ffi.CData:
+    """char	*gets(char *);"""
+    ...
+  def getw(arg: ffi.CData) -> int:
+    """int	 getw(FILE *);"""
     ...
   def ggml_abs(ctx: ffi.CData, a: ffi.CData) -> ffi.CData:
     """
@@ -606,10 +910,10 @@ class lib:
                 float                 step);
     """
     ...
-  def ggml_are_same_shape(t0: ffi.CData, t1: ffi.CData) -> ffi.CData:
+  def ggml_are_same_shape(t0: ffi.CData, t1: ffi.CData) -> bool:
     """    GGML_API bool ggml_are_same_shape (const struct ggml_tensor * t0, const struct ggml_tensor * t1);"""
     ...
-  def ggml_are_same_stride(t0: ffi.CData, t1: ffi.CData) -> ffi.CData:
+  def ggml_are_same_stride(t0: ffi.CData, t1: ffi.CData) -> bool:
     """    GGML_API bool ggml_are_same_stride(const struct ggml_tensor * t0, const struct ggml_tensor * t1);"""
     ...
   def ggml_argmax(ctx: ffi.CData, a: ffi.CData) -> ffi.CData:
@@ -670,7 +974,7 @@ class lib:
   def ggml_backend_buffer_init_tensor(buffer: ffi.CData, tensor: ffi.CData) -> None:
     """    GGML_API GGML_CALL void                       ggml_backend_buffer_init_tensor   (ggml_backend_buffer_t buffer, struct ggml_tensor * tensor);"""
     ...
-  def ggml_backend_buffer_is_host(buffer: ffi.CData) -> ffi.CData:
+  def ggml_backend_buffer_is_host(buffer: ffi.CData) -> bool:
     """    GGML_API           bool                       ggml_backend_buffer_is_host       (ggml_backend_buffer_t buffer);"""
     ...
   def ggml_backend_buffer_name(buffer: ffi.CData) -> ffi.CData:
@@ -694,7 +998,7 @@ class lib:
   def ggml_backend_buft_get_max_size(buft: ffi.CData) -> int:
     """    GGML_API           size_t                ggml_backend_buft_get_max_size    (ggml_backend_buffer_type_t buft);"""
     ...
-  def ggml_backend_buft_is_host(buft: ffi.CData) -> ffi.CData:
+  def ggml_backend_buft_is_host(buft: ffi.CData) -> bool:
     """    GGML_API           bool                  ggml_backend_buft_is_host         (ggml_backend_buffer_type_t buft);"""
     ...
   def ggml_backend_buft_name(buft: ffi.CData) -> ffi.CData:
@@ -704,10 +1008,10 @@ class lib:
         GGML_API           const char *          ggml_backend_buft_name            (ggml_backend_buffer_type_t buft);
     """
     ...
-  def ggml_backend_buft_supports_backend(buft: ffi.CData, backend: ffi.CData) -> ffi.CData:
+  def ggml_backend_buft_supports_backend(buft: ffi.CData, backend: ffi.CData) -> bool:
     """    GGML_API           bool                  ggml_backend_buft_supports_backend(ggml_backend_buffer_type_t buft, ggml_backend_t backend);"""
     ...
-  def ggml_backend_compare_graph_backend(backend1: ffi.CData, backend2: ffi.CData, graph: ffi.CData, callback: ffi.CData, user_data: ffi.CData) -> ffi.CData:
+  def ggml_backend_compare_graph_backend(backend1: ffi.CData, backend2: ffi.CData, graph: ffi.CData, callback: ffi.CData, user_data: ffi.CData) -> bool:
     """
     Compare the output of two backends
 
@@ -763,7 +1067,7 @@ class lib:
     GGML_API GGML_CALL ggml_backend_t ggml_backend_cuda_init(int device);
     """
     ...
-  def ggml_backend_cuda_register_host_buffer(buffer: ffi.CData, size: int) -> ffi.CData:
+  def ggml_backend_cuda_register_host_buffer(buffer: ffi.CData, size: int) -> bool:
     """GGML_API GGML_CALL bool ggml_backend_cuda_register_host_buffer(void * buffer, size_t size);"""
     ...
   def ggml_backend_cuda_split_buffer_type(tensor_split: ffi.CData) -> ffi.CData:
@@ -835,22 +1139,22 @@ class lib:
   def ggml_backend_guid(backend: ffi.CData) -> ffi.CData:
     """    GGML_API ggml_guid_t  ggml_backend_guid(ggml_backend_t backend);"""
     ...
-  def ggml_backend_is_cpu(backend: ffi.CData) -> ffi.CData:
+  def ggml_backend_is_cpu(backend: ffi.CData) -> bool:
     """    GGML_API GGML_CALL bool ggml_backend_is_cpu                (ggml_backend_t backend);"""
     ...
-  def ggml_backend_is_cuda(backend: ffi.CData) -> ffi.CData:
+  def ggml_backend_is_cuda(backend: ffi.CData) -> bool:
     """GGML_API GGML_CALL bool ggml_backend_is_cuda(ggml_backend_t backend);"""
     ...
-  def ggml_backend_is_kompute(backend: ffi.CData) -> ffi.CData:
+  def ggml_backend_is_kompute(backend: ffi.CData) -> bool:
     """GGML_API bool ggml_backend_is_kompute(ggml_backend_t backend);"""
     ...
-  def ggml_backend_is_metal(backend: ffi.CData) -> ffi.CData:
+  def ggml_backend_is_metal(backend: ffi.CData) -> bool:
     """GGML_API bool ggml_backend_is_metal(ggml_backend_t backend);"""
     ...
-  def ggml_backend_is_rpc(backend: ffi.CData) -> ffi.CData:
+  def ggml_backend_is_rpc(backend: ffi.CData) -> bool:
     """GGML_API GGML_CALL bool ggml_backend_is_rpc(ggml_backend_t backend);"""
     ...
-  def ggml_backend_is_vk(backend: ffi.CData) -> ffi.CData:
+  def ggml_backend_is_vk(backend: ffi.CData) -> bool:
     """GGML_API GGML_CALL bool ggml_backend_is_vk(ggml_backend_t backend);"""
     ...
   def ggml_backend_kompute_buffer_type(device: int) -> ffi.CData:
@@ -881,7 +1185,7 @@ class lib:
   def ggml_backend_metal_set_n_cb(backend: ffi.CData, n_cb: int) -> None:
     """GGML_API void ggml_backend_metal_set_n_cb(ggml_backend_t backend, int n_cb);"""
     ...
-  def ggml_backend_metal_supports_family(backend: ffi.CData, family: int) -> ffi.CData:
+  def ggml_backend_metal_supports_family(backend: ffi.CData, family: int) -> bool:
     """
     helper to check if the device supports a specific family
     ideally, the user code should be doing these checks
@@ -893,7 +1197,7 @@ class lib:
   def ggml_backend_name(backend: ffi.CData) -> ffi.CData:
     """    GGML_API const char * ggml_backend_name(ggml_backend_t backend);"""
     ...
-  def ggml_backend_offload_op(backend: ffi.CData, op: ffi.CData) -> ffi.CData:
+  def ggml_backend_offload_op(backend: ffi.CData, op: ffi.CData) -> bool:
     """    GGML_API bool ggml_backend_offload_op(ggml_backend_t backend, const struct ggml_tensor * op);"""
     ...
   def ggml_backend_opencl_buffer_type() -> ffi.CData:
@@ -933,7 +1237,7 @@ class lib:
     GGML_API GGML_CALL ggml_backend_t ggml_backend_rpc_init(const char * endpoint);
     """
     ...
-  def ggml_backend_sched_alloc_graph(sched: ffi.CData, graph: ffi.CData) -> ffi.CData:
+  def ggml_backend_sched_alloc_graph(sched: ffi.CData, graph: ffi.CData) -> bool:
     """
     Allocate and compute graph on the backend scheduler
 
@@ -965,14 +1269,14 @@ class lib:
   def ggml_backend_sched_graph_compute_async(sched: ffi.CData, graph: ffi.CData) -> int:
     """    GGML_API enum ggml_status     ggml_backend_sched_graph_compute_async(ggml_backend_sched_t sched, struct ggml_cgraph * graph);"""
     ...
-  def ggml_backend_sched_new(backends: ffi.CData, bufts: ffi.CData, n_backends: int, graph_size: int, parallel: ffi.CData) -> ffi.CData:
+  def ggml_backend_sched_new(backends: ffi.CData, bufts: ffi.CData, n_backends: int, graph_size: int, parallel: bool) -> ffi.CData:
     """
     Initialize a backend scheduler
 
         GGML_API ggml_backend_sched_t ggml_backend_sched_new(ggml_backend_t * backends, ggml_backend_buffer_type_t * bufts, int n_backends, size_t graph_size, bool parallel);
     """
     ...
-  def ggml_backend_sched_reserve(sched: ffi.CData, measure_graph: ffi.CData) -> ffi.CData:
+  def ggml_backend_sched_reserve(sched: ffi.CData, measure_graph: ffi.CData) -> bool:
     """
     Initialize backend buffers from a measure graph
 
@@ -999,7 +1303,7 @@ class lib:
   def ggml_backend_sched_synchronize(sched: ffi.CData) -> None:
     """    GGML_API void                 ggml_backend_sched_synchronize(ggml_backend_sched_t sched);"""
     ...
-  def ggml_backend_supports_op(backend: ffi.CData, op: ffi.CData) -> ffi.CData:
+  def ggml_backend_supports_op(backend: ffi.CData, op: ffi.CData) -> bool:
     """    GGML_API bool ggml_backend_supports_op(ggml_backend_t backend, const struct ggml_tensor * op);"""
     ...
   def ggml_backend_sycl_buffer_type(device: int) -> ffi.CData:
@@ -1127,7 +1431,7 @@ class lib:
   def ggml_blck_size(type: int) -> int:
     """    GGML_API GGML_CALL int    ggml_blck_size(enum ggml_type type);"""
     ...
-  def ggml_build_backward_expand(ctx: ffi.CData, gf: ffi.CData, gb: ffi.CData, keep: ffi.CData) -> None:
+  def ggml_build_backward_expand(ctx: ffi.CData, gf: ffi.CData, gb: ffi.CData, keep: bool) -> None:
     """    GGML_API void ggml_build_backward_expand(struct ggml_context * ctx, struct ggml_cgraph * gf, struct ggml_cgraph * gb, bool keep);"""
     ...
   def ggml_build_backward_gradient_checkpointing(ctx: ffi.CData, gf: ffi.CData, gb: ffi.CData, gb_tmp: ffi.CData, checkpoints: ffi.CData, n_checkpoints: int) -> None:
@@ -1159,7 +1463,7 @@ class lib:
   def ggml_cl_add(src0: ffi.CData, src1: ffi.CData, dst: ffi.CData) -> None:
     """GGML_API void   ggml_cl_add(const struct ggml_tensor * src0, const struct ggml_tensor * src1, struct ggml_tensor * dst);"""
     ...
-  def ggml_cl_can_mul_mat(src0: ffi.CData, src1: ffi.CData, dst: ffi.CData) -> ffi.CData:
+  def ggml_cl_can_mul_mat(src0: ffi.CData, src1: ffi.CData, dst: ffi.CData) -> bool:
     """GGML_API bool   ggml_cl_can_mul_mat(const struct ggml_tensor * src0, const struct ggml_tensor * src1, const struct ggml_tensor * dst);"""
     ...
   def ggml_cl_free_data(tensor: ffi.CData) -> None:
@@ -1562,7 +1866,7 @@ class lib:
                 struct ggml_tensor  * a);
     """
     ...
-  def ggml_flash_attn(ctx: ffi.CData, q: ffi.CData, k: ffi.CData, v: ffi.CData, masked: ffi.CData) -> ffi.CData:
+  def ggml_flash_attn(ctx: ffi.CData, q: ffi.CData, k: ffi.CData, v: ffi.CData, masked: bool) -> ffi.CData:
     """
         GGML_API struct ggml_tensor * ggml_flash_attn(
                 struct ggml_context * ctx,
@@ -1572,7 +1876,7 @@ class lib:
                 bool                  masked);
     """
     ...
-  def ggml_flash_attn_back(ctx: ffi.CData, q: ffi.CData, k: ffi.CData, v: ffi.CData, d: ffi.CData, masked: ffi.CData) -> ffi.CData:
+  def ggml_flash_attn_back(ctx: ffi.CData, q: ffi.CData, k: ffi.CData, v: ffi.CData, d: ffi.CData, masked: bool) -> ffi.CData:
     """
         GGML_API struct ggml_tensor * ggml_flash_attn_back(
                struct ggml_context * ctx,
@@ -1657,7 +1961,7 @@ class lib:
         GGML_API enum ggml_type ggml_ftype_to_ggml_type(enum ggml_ftype ftype);
     """
     ...
-  def ggml_gallocr_alloc_graph(galloc: ffi.CData, graph: ffi.CData) -> ffi.CData:
+  def ggml_gallocr_alloc_graph(galloc: ffi.CData, graph: ffi.CData) -> bool:
     """
     automatic reallocation if the topology changes when using a single buffer
     returns false if using multiple buffers and a re-allocation is needed (call ggml_gallocr_reserve_n first to set the node buffers)
@@ -1677,7 +1981,7 @@ class lib:
   def ggml_gallocr_new_n(bufts: ffi.CData, n_bufs: int) -> ffi.CData:
     """GGML_API ggml_gallocr_t ggml_gallocr_new_n(ggml_backend_buffer_type_t * bufts, int n_bufs);"""
     ...
-  def ggml_gallocr_reserve(galloc: ffi.CData, graph: ffi.CData) -> ffi.CData:
+  def ggml_gallocr_reserve(galloc: ffi.CData, graph: ffi.CData) -> bool:
     """
     pre-allocate buffers from a measure graph - does not allocate or modify the graph
     call with a worst-case graph to avoid buffer reallocations
@@ -1687,7 +1991,7 @@ class lib:
     GGML_API bool ggml_gallocr_reserve(ggml_gallocr_t galloc, struct ggml_cgraph * graph);
     """
     ...
-  def ggml_gallocr_reserve_n(galloc: ffi.CData, graph: ffi.CData, node_buffer_ids: ffi.CData, leaf_buffer_ids: ffi.CData) -> ffi.CData:
+  def ggml_gallocr_reserve_n(galloc: ffi.CData, graph: ffi.CData, node_buffer_ids: ffi.CData, leaf_buffer_ids: ffi.CData) -> bool:
     """
     GGML_API bool ggml_gallocr_reserve_n(
         ggml_gallocr_t galloc,
@@ -1764,7 +2068,7 @@ class lib:
   def ggml_get_next_tensor(ctx: ffi.CData, tensor: ffi.CData) -> ffi.CData:
     """    GGML_API struct ggml_tensor * ggml_get_next_tensor (const struct ggml_context * ctx, struct ggml_tensor * tensor);"""
     ...
-  def ggml_get_no_alloc(ctx: ffi.CData) -> ffi.CData:
+  def ggml_get_no_alloc(ctx: ffi.CData) -> bool:
     """    GGML_API bool    ggml_get_no_alloc(struct ggml_context * ctx);"""
     ...
   def ggml_get_rel_pos(ctx: ffi.CData, a: ffi.CData, qh: int, kh: int) -> ffi.CData:
@@ -1842,7 +2146,7 @@ class lib:
   def ggml_graph_overhead() -> int:
     """    GGML_API size_t ggml_graph_overhead(void);"""
     ...
-  def ggml_graph_overhead_custom(size: int, grads: ffi.CData) -> int:
+  def ggml_graph_overhead_custom(size: int, grads: bool) -> int:
     """    GGML_API size_t ggml_graph_overhead_custom(size_t size, bool grads);"""
     ...
   def ggml_graph_plan(cgraph: ffi.CData, n_threads: int) -> ffi.CData:
@@ -1886,7 +2190,7 @@ class lib:
                 int                   n_groups);
     """
     ...
-  def ggml_guid_matches(guid_a: ffi.CData, guid_b: ffi.CData) -> ffi.CData:
+  def ggml_guid_matches(guid_a: ffi.CData, guid_b: ffi.CData) -> bool:
     """    GGML_API bool ggml_guid_matches(ggml_guid_t guid_a, ggml_guid_t guid_b);"""
     ...
   def ggml_hardsigmoid(ctx: ffi.CData, a: ffi.CData) -> ffi.CData:
@@ -1907,7 +2211,7 @@ class lib:
                 struct ggml_tensor  * a);
     """
     ...
-  def ggml_im2col(ctx: ffi.CData, a: ffi.CData, b: ffi.CData, s0: int, s1: int, p0: int, p1: int, d0: int, d1: int, is_2D: ffi.CData, dst_type: int) -> ffi.CData:
+  def ggml_im2col(ctx: ffi.CData, a: ffi.CData, b: ffi.CData, s0: int, s1: int, p0: int, p1: int, d0: int, d1: int, is_2D: bool, dst_type: int) -> ffi.CData:
     """
         GGML_API struct ggml_tensor * ggml_im2col(
                 struct ggml_context * ctx,
@@ -1929,37 +2233,37 @@ class lib:
   def ggml_internal_get_type_traits(type: int) -> ffi.CData:
     """    GGML_API ggml_type_traits_t ggml_internal_get_type_traits(enum ggml_type type);"""
     ...
-  def ggml_is_3d(tensor: ffi.CData) -> ffi.CData:
+  def ggml_is_3d(tensor: ffi.CData) -> bool:
     """    GGML_API           bool ggml_is_3d        (const struct ggml_tensor * tensor);"""
     ...
-  def ggml_is_contiguous(tensor: ffi.CData) -> ffi.CData:
+  def ggml_is_contiguous(tensor: ffi.CData) -> bool:
     """    GGML_API GGML_CALL bool ggml_is_contiguous(const struct ggml_tensor * tensor);"""
     ...
-  def ggml_is_empty(tensor: ffi.CData) -> ffi.CData:
+  def ggml_is_empty(tensor: ffi.CData) -> bool:
     """    GGML_API GGML_CALL bool ggml_is_empty     (const struct ggml_tensor * tensor);"""
     ...
-  def ggml_is_matrix(tensor: ffi.CData) -> ffi.CData:
+  def ggml_is_matrix(tensor: ffi.CData) -> bool:
     """    GGML_API           bool ggml_is_matrix    (const struct ggml_tensor * tensor);"""
     ...
-  def ggml_is_numa() -> ffi.CData:
+  def ggml_is_numa() -> bool:
     """    GGML_API bool    ggml_is_numa(void); // true if init detected that system has >1 NUMA node"""
     ...
-  def ggml_is_permuted(tensor: ffi.CData) -> ffi.CData:
+  def ggml_is_permuted(tensor: ffi.CData) -> bool:
     """    GGML_API GGML_CALL bool ggml_is_permuted  (const struct ggml_tensor * tensor);"""
     ...
-  def ggml_is_quantized(type: int) -> ffi.CData:
+  def ggml_is_quantized(type: int) -> bool:
     """    GGML_API GGML_CALL bool    ggml_is_quantized(enum ggml_type type);"""
     ...
-  def ggml_is_scalar(tensor: ffi.CData) -> ffi.CData:
+  def ggml_is_scalar(tensor: ffi.CData) -> bool:
     """    GGML_API           bool ggml_is_scalar    (const struct ggml_tensor * tensor);"""
     ...
-  def ggml_is_transposed(tensor: ffi.CData) -> ffi.CData:
+  def ggml_is_transposed(tensor: ffi.CData) -> bool:
     """    GGML_API GGML_CALL bool ggml_is_transposed(const struct ggml_tensor * tensor);"""
     ...
-  def ggml_is_vector(tensor: ffi.CData) -> ffi.CData:
+  def ggml_is_vector(tensor: ffi.CData) -> bool:
     """    GGML_API           bool ggml_is_vector    (const struct ggml_tensor * tensor);"""
     ...
-  def ggml_leaky_relu(ctx: ffi.CData, a: ffi.CData, negative_slope: float, inplace: ffi.CData) -> ffi.CData:
+  def ggml_leaky_relu(ctx: ffi.CData, a: ffi.CData, negative_slope: float, inplace: bool) -> ffi.CData:
     """
         GGML_API struct ggml_tensor * ggml_leaky_relu(
                 struct ggml_context * ctx,
@@ -2153,6 +2457,46 @@ class lib:
                 struct ggml_tensor  * a);
     """
     ...
+  def ggml_mpi_backend_free() -> None:
+    """void ggml_mpi_backend_free(void);"""
+    ...
+  def ggml_mpi_backend_init() -> None:
+    """void ggml_mpi_backend_init(void);"""
+    ...
+  def ggml_mpi_eval_init(ctx_mpi: ffi.CData, n_tokens: ffi.CData, n_past: ffi.CData, n_threads: ffi.CData) -> None:
+    """
+    void ggml_mpi_eval_init(
+            struct ggml_mpi_context * ctx_mpi,
+                                int * n_tokens,
+                                int * n_past,
+                                int * n_threads);
+    """
+    ...
+  def ggml_mpi_free(ctx: ffi.CData) -> None:
+    """void ggml_mpi_free(struct ggml_mpi_context * ctx);"""
+    ...
+  def ggml_mpi_graph_compute_post(ctx_mpi: ffi.CData, gf: ffi.CData, n_layers: int) -> None:
+    """
+    void ggml_mpi_graph_compute_post(
+            struct ggml_mpi_context * ctx_mpi,
+                 struct ggml_cgraph * gf,
+                                int   n_layers);
+    """
+    ...
+  def ggml_mpi_graph_compute_pre(ctx_mpi: ffi.CData, gf: ffi.CData, n_layers: int) -> None:
+    """
+    void ggml_mpi_graph_compute_pre(
+            struct ggml_mpi_context * ctx_mpi,
+                 struct ggml_cgraph * gf,
+                                int   n_layers);
+    """
+    ...
+  def ggml_mpi_init() -> ffi.CData:
+    """struct ggml_mpi_context * ggml_mpi_init(void);"""
+    ...
+  def ggml_mpi_rank(ctx: ffi.CData) -> int:
+    """int ggml_mpi_rank(struct ggml_mpi_context * ctx);"""
+    ...
   def ggml_mul(ctx: ffi.CData, a: ffi.CData, b: ffi.CData) -> ffi.CData:
     """
         GGML_API struct ggml_tensor * ggml_mul(
@@ -2238,7 +2582,7 @@ class lib:
         GGML_API struct ggml_cgraph * ggml_new_graph         (struct ggml_context * ctx); // size = GGML_DEFAULT_GRAPH_SIZE, grads = false
     """
     ...
-  def ggml_new_graph_custom(ctx: ffi.CData, size: int, grads: ffi.CData) -> ffi.CData:
+  def ggml_new_graph_custom(ctx: ffi.CData, size: int, grads: bool) -> ffi.CData:
     """    GGML_API struct ggml_cgraph * ggml_new_graph_custom  (struct ggml_context * ctx, size_t size, bool grads);"""
     ...
   def ggml_new_i32(ctx: ffi.CData, value: int) -> ffi.CData:
@@ -2477,7 +2821,7 @@ class lib:
         GGML_API void ggml_quantize_init(enum ggml_type type);
     """
     ...
-  def ggml_quantize_requires_imatrix(type: int) -> ffi.CData:
+  def ggml_quantize_requires_imatrix(type: int) -> bool:
     """
     some quantization type cannot be used without an importance matrix
 
@@ -2620,7 +2964,7 @@ class lib:
                 int                   n_ctx);
     """
     ...
-  def ggml_rope_back(ctx: ffi.CData, a: ffi.CData, b: ffi.CData, n_dims: int, mode: int, n_ctx: int, n_orig_ctx: int, freq_base: float, freq_scale: float, ext_factor: float, attn_factor: float, beta_fast: float, beta_slow: float, xpos_base: float, xpos_down: ffi.CData) -> ffi.CData:
+  def ggml_rope_back(ctx: ffi.CData, a: ffi.CData, b: ffi.CData, n_dims: int, mode: int, n_ctx: int, n_orig_ctx: int, freq_base: float, freq_scale: float, ext_factor: float, attn_factor: float, beta_fast: float, beta_slow: float, xpos_base: float, xpos_down: bool) -> ffi.CData:
     """
     rotary position embedding backward, i.e compute dx from dy
     a - dy
@@ -2696,7 +3040,7 @@ class lib:
                 int                   n_ctx);
     """
     ...
-  def ggml_rope_xpos_inplace(ctx: ffi.CData, a: ffi.CData, b: ffi.CData, n_dims: int, base: float, down: ffi.CData) -> ffi.CData:
+  def ggml_rope_xpos_inplace(ctx: ffi.CData, a: ffi.CData, b: ffi.CData, n_dims: int, base: float, down: bool) -> ffi.CData:
     """
     xPos RoPE, in-place, returns view(a)
 
@@ -2838,7 +3182,7 @@ class lib:
   def ggml_set_name(tensor: ffi.CData, name: ffi.CData) -> ffi.CData:
     """    GGML_API struct ggml_tensor * ggml_set_name   (      struct ggml_tensor * tensor, const char * name);"""
     ...
-  def ggml_set_no_alloc(ctx: ffi.CData, no_alloc: ffi.CData) -> None:
+  def ggml_set_no_alloc(ctx: ffi.CData, no_alloc: bool) -> None:
     """    GGML_API void    ggml_set_no_alloc(struct ggml_context * ctx, bool no_alloc);"""
     ...
   def ggml_set_output(tensor: ffi.CData) -> None:
@@ -3207,7 +3551,7 @@ class lib:
   def ggml_used_mem(ctx: ffi.CData) -> int:
     """    GGML_API size_t  ggml_used_mem(const struct ggml_context * ctx);"""
     ...
-  def ggml_validate_row_data(type: int, data: ffi.CData, nbytes: int) -> ffi.CData:
+  def ggml_validate_row_data(type: int, data: ffi.CData, nbytes: int) -> bool:
     """    GGML_API bool ggml_validate_row_data(enum ggml_type type, const void * data, size_t nbytes);"""
     ...
   def ggml_vec_dot_iq1_m_q8_K(n: int, s: ffi.CData, bs: int, vx: ffi.CData, bx: int, vy: ffi.CData, by: int, nrc: int) -> None:
@@ -3330,13 +3674,13 @@ class lib:
   def ggml_vk_current_device() -> ffi.CData:
     """struct ggml_vk_device ggml_vk_current_device(void);"""
     ...
-  def ggml_vk_get_device(device: ffi.CData, memoryRequired: int, name: ffi.CData) -> ffi.CData:
+  def ggml_vk_get_device(device: ffi.CData, memoryRequired: int, name: ffi.CData) -> bool:
     """bool ggml_vk_get_device(struct ggml_vk_device * device, size_t memoryRequired, const char * name);"""
     ...
-  def ggml_vk_has_device() -> ffi.CData:
+  def ggml_vk_has_device() -> bool:
     """bool ggml_vk_has_device(void);"""
     ...
-  def ggml_vk_has_vulkan() -> ffi.CData:
+  def ggml_vk_has_vulkan() -> bool:
     """bool ggml_vk_has_vulkan(void);"""
     ...
   def ggml_vk_instance_init() -> None:
@@ -3441,7 +3785,7 @@ class lib:
   def gguf_get_tensor_type(ctx: ffi.CData, i: int) -> int:
     """    GGML_API enum ggml_type gguf_get_tensor_type  (const struct gguf_context * ctx, int i);"""
     ...
-  def gguf_get_val_bool(ctx: ffi.CData, key_id: int) -> ffi.CData:
+  def gguf_get_val_bool(ctx: ffi.CData, key_id: int) -> bool:
     """    GGML_API bool         gguf_get_val_bool(const struct gguf_context * ctx, int key_id);"""
     ...
   def gguf_get_val_data(ctx: ffi.CData, key_id: int) -> ffi.CData:
@@ -3519,7 +3863,7 @@ class lib:
   def gguf_set_tensor_type(ctx: ffi.CData, name: ffi.CData, type: int) -> None:
     """    GGML_API void gguf_set_tensor_type(struct gguf_context * ctx, const char * name, enum ggml_type type);"""
     ...
-  def gguf_set_val_bool(ctx: ffi.CData, key: ffi.CData, val: ffi.CData) -> None:
+  def gguf_set_val_bool(ctx: ffi.CData, key: ffi.CData, val: bool) -> None:
     """    GGML_API void gguf_set_val_bool(struct gguf_context * ctx, const char * key, bool     val);"""
     ...
   def gguf_set_val_f32(ctx: ffi.CData, key: ffi.CData, val: float) -> None:
@@ -3562,7 +3906,7 @@ class lib:
   def gguf_type_name(type: int) -> ffi.CData:
     """    GGML_API const char * gguf_type_name(enum gguf_type type);"""
     ...
-  def gguf_write_to_file(ctx: ffi.CData, fname: ffi.CData, only_meta: ffi.CData) -> None:
+  def gguf_write_to_file(ctx: ffi.CData, fname: ffi.CData, only_meta: bool) -> None:
     """
     write the entire context to a binary file
 
@@ -3580,6 +3924,1080 @@ class lib:
     ...
   def iq3xs_init_impl(grid_size: int) -> None:
     """void iq3xs_init_impl(int grid_size);"""
+    ...
+  def llama_add_bos_token(model: ffi.CData) -> int:
+    """
+    Returns -1 if unknown, 1 for true or 0 for false.
+
+        LLAMA_API int32_t         llama_add_bos_token(const struct llama_model * model);
+    """
+    ...
+  def llama_add_eos_token(model: ffi.CData) -> int:
+    """
+    Returns -1 if unknown, 1 for true or 0 for false.
+
+        LLAMA_API int32_t         llama_add_eos_token(const struct llama_model * model);
+    """
+    ...
+  def llama_backend_free() -> None:
+    """
+    Call once at the end of the program - currently only used for MPI
+
+        LLAMA_API void llama_backend_free(void);
+    """
+    ...
+  def llama_backend_init() -> None:
+    """
+    Initialize the llama + ggml backend
+    If numa is true, use NUMA optimizations
+    Call once at the start of the program
+
+        LLAMA_API void llama_backend_init(void);
+    """
+    ...
+  def llama_batch_free(batch: ffi.CData) -> None:
+    """
+    Frees a batch of tokens allocated with llama_batch_init()
+
+        LLAMA_API void llama_batch_free(struct llama_batch batch);
+    """
+    ...
+  def llama_batch_get_one(tokens: ffi.CData, n_tokens: int, pos_0: ffi.CData, seq_id: ffi.CData) -> ffi.CData:
+    """
+    Return batch for single sequence of tokens starting at pos_0
+    
+    NOTE: this is a helper function to facilitate transition to the new batch API - avoid using it
+    
+
+        LLAMA_API struct llama_batch llama_batch_get_one(
+                      llama_token * tokens,
+                          int32_t   n_tokens,
+                        llama_pos   pos_0,
+                     llama_seq_id   seq_id);
+    """
+    ...
+  def llama_batch_init(n_tokens: int, embd: int, n_seq_max: int) -> ffi.CData:
+    """
+    Allocates a batch of tokens on the heap that can hold a maximum of n_tokens
+    Each token can be assigned up to n_seq_max sequence ids
+    The batch has to be freed with llama_batch_free()
+    If embd != 0, llama_batch.embd will be allocated with size of n_tokens * embd * sizeof(float)
+    Otherwise, llama_batch.token will be allocated to store n_tokens llama_token
+    The rest of the llama_batch members are allocated with size n_tokens
+    All members are left uninitialized
+
+        LLAMA_API struct llama_batch llama_batch_init(
+                int32_t n_tokens,
+                int32_t embd,
+                int32_t n_seq_max);
+    """
+    ...
+  def llama_beam_search(ctx: ffi.CData, callback: ffi.CData, callback_data: ffi.CData, n_beams: int, n_past: int, n_predict: int) -> None:
+    """
+    @details Deterministically returns entire sentence constructed by a beam search.
+    @param ctx Pointer to the llama_context.
+    @param callback Invoked for each iteration of the beam_search loop, passing in beams_state.
+    @param callback_data A pointer that is simply passed back to callback.
+    @param n_beams Number of beams to use.
+    @param n_past Number of tokens already evaluated.
+    @param n_predict Maximum number of tokens to predict. EOS may occur earlier.
+
+        LLAMA_API void llama_beam_search(
+                       struct llama_context * ctx,
+            llama_beam_search_callback_fn_t   callback,
+                                       void * callback_data,
+                                     size_t   n_beams,
+                                    int32_t   n_past,
+                                    int32_t   n_predict);
+    """
+    ...
+  def llama_chat_apply_template(model: ffi.CData, tmpl: ffi.CData, chat: ffi.CData, n_msg: int, add_ass: bool, buf: ffi.CData, length: int) -> int:
+    """
+    Apply chat template. Inspired by hf apply_chat_template() on python.
+    Both "model" and "custom_template" are optional, but at least one is required. "custom_template" has higher precedence than "model"
+    NOTE: This function does not use a jinja parser. It only support a pre-defined list of template. See more: https://github.com/ggerganov/llama.cpp/wiki/Templates-supported-by-llama_chat_apply_template
+    @param tmpl A Jinja template to use for this chat. If this is nullptr, the model’s default chat template will be used instead.
+    @param chat Pointer to a list of multiple llama_chat_message
+    @param n_msg Number of llama_chat_message in this chat
+    @param add_ass Whether to end the prompt with the token(s) that indicate the start of an assistant message.
+    @param buf A buffer to hold the output formatted prompt. The recommended alloc size is 2 * (total number of characters of all messages)
+    @param length The size of the allocated buffer
+    @return The total number of bytes of the formatted prompt. If is it larger than the size of buffer, you may need to re-alloc it and then re-apply the template.
+
+        LLAMA_API int32_t llama_chat_apply_template(
+                  const struct llama_model * model,
+                                const char * tmpl,
+           const struct llama_chat_message * chat,
+                                    size_t   n_msg,
+                                      bool   add_ass,
+                                      char * buf,
+                                   int32_t   length);
+    """
+    ...
+  def llama_context_default_params() -> ffi.CData:
+    """    LLAMA_API struct llama_context_params llama_context_default_params(void);"""
+    ...
+  def llama_control_vector_apply(lctx: ffi.CData, data: ffi.CData, len: int, n_embd: int, il_start: int, il_end: int) -> int:
+    """
+    Apply a loaded control vector to a llama_context, or if data is NULL, clear
+    the currently loaded vector.
+    n_embd should be the size of a single layer's control, and data should point
+    to an n_embd x n_layers buffer starting from layer 1.
+    il_start and il_end are the layer range the vector should apply to (both inclusive)
+    See llama_control_vector_load in common to load a control vector.
+
+        LLAMA_API int32_t llama_control_vector_apply(
+                struct llama_context * lctx,
+                         const float * data,
+                              size_t   len,
+                             int32_t   n_embd,
+                             int32_t   il_start,
+                             int32_t   il_end);
+    """
+    ...
+  def llama_copy_state_data(ctx: ffi.CData, dst: ffi.CData) -> int:
+    """
+        LLAMA_API DEPRECATED(size_t llama_copy_state_data(
+                struct llama_context * ctx,
+                             uint8_t * dst),
+            "use llama_state_get_data instead");
+    """
+    ...
+  def llama_decode(ctx: ffi.CData, batch: ffi.CData) -> int:
+    """
+    Positive return values does not mean a fatal error, but rather a warning.
+    0 - success
+    1 - could not find a KV slot for the batch (try reducing the size of the batch or increase the context)
+    < 0 - error
+
+        LLAMA_API int32_t llama_decode(
+                struct llama_context * ctx,
+                  struct llama_batch   batch);
+    """
+    ...
+  def llama_dump_timing_info_yaml(stream: ffi.CData, ctx: ffi.CData) -> None:
+    """    LLAMA_API void llama_dump_timing_info_yaml(FILE * stream, const struct llama_context * ctx);"""
+    ...
+  def llama_free(ctx: ffi.CData) -> None:
+    """
+    Frees all allocated memory
+
+        LLAMA_API void llama_free(struct llama_context * ctx);
+    """
+    ...
+  def llama_free_model(model: ffi.CData) -> None:
+    """    LLAMA_API void llama_free_model(struct llama_model * model);"""
+    ...
+  def llama_get_embeddings(ctx: ffi.CData) -> ffi.CData:
+    """
+    Get all output token embeddings.
+    when pooling_type == LLAMA_POOLING_TYPE_NONE or when using a generative model,
+    the embeddings for which llama_batch.logits[i] != 0 are stored contiguously
+    in the order they have appeared in the batch.
+    shape: [n_outputs*n_embd]
+    Otherwise, returns NULL.
+
+        LLAMA_API float * llama_get_embeddings(struct llama_context * ctx);
+    """
+    ...
+  def llama_get_embeddings_ith(ctx: ffi.CData, i: int) -> ffi.CData:
+    """
+    Get the embeddings for the ith token. For positive indices, Equivalent to:
+    llama_get_embeddings(ctx) + ctx->output_ids[i]*n_embd
+    Negative indicies can be used to access embeddings in reverse order, -1 is the last embedding.
+    shape: [n_embd] (1-dimensional)
+    returns NULL for invalid ids.
+
+        LLAMA_API float * llama_get_embeddings_ith(struct llama_context * ctx, int32_t i);
+    """
+    ...
+  def llama_get_embeddings_seq(ctx: ffi.CData, seq_id: ffi.CData) -> ffi.CData:
+    """
+    Get the embeddings for a sequence id
+    Returns NULL if pooling_type is LLAMA_POOLING_TYPE_NONE
+    shape: [n_embd] (1-dimensional)
+
+        LLAMA_API float * llama_get_embeddings_seq(struct llama_context * ctx, llama_seq_id seq_id);
+    """
+    ...
+  def llama_get_kv_cache_token_count(ctx: ffi.CData) -> int:
+    """
+    Returns the number of tokens in the KV cache (slow, use only for debug)
+    If a KV cell has multiple sequences assigned to it, it will be counted multiple times
+
+        LLAMA_API int32_t llama_get_kv_cache_token_count(const struct llama_context * ctx);
+    """
+    ...
+  def llama_get_kv_cache_used_cells(ctx: ffi.CData) -> int:
+    """
+    Returns the number of used KV cells (i.e. have at least one sequence assigned to them)
+
+        LLAMA_API int32_t llama_get_kv_cache_used_cells(const struct llama_context * ctx);
+    """
+    ...
+  def llama_get_logits(ctx: ffi.CData) -> ffi.CData:
+    """
+    Token logits obtained from the last call to llama_decode()
+    The logits for which llama_batch.logits[i] != 0 are stored contiguously
+    in the order they have appeared in the batch.
+    Rows: number of tokens for which llama_batch.logits[i] != 0
+    Cols: n_vocab
+
+        LLAMA_API float * llama_get_logits(struct llama_context * ctx);
+    """
+    ...
+  def llama_get_logits_ith(ctx: ffi.CData, i: int) -> ffi.CData:
+    """
+    Logits for the ith token. For positive indices, Equivalent to:
+    llama_get_logits(ctx) + ctx->output_ids[i]*n_vocab
+    Negative indicies can be used to access logits in reverse order, -1 is the last logit.
+    returns NULL for invalid ids.
+
+        LLAMA_API float * llama_get_logits_ith(struct llama_context * ctx, int32_t i);
+    """
+    ...
+  def llama_get_model(ctx: ffi.CData) -> ffi.CData:
+    """    LLAMA_API const struct llama_model * llama_get_model(const struct llama_context * ctx);"""
+    ...
+  def llama_get_model_tensor(model: ffi.CData, name: ffi.CData) -> ffi.CData:
+    """
+    Get a llama model tensor
+
+        LLAMA_API struct ggml_tensor * llama_get_model_tensor(struct llama_model * model, const char * name);
+    """
+    ...
+  def llama_get_state_size(ctx: ffi.CData) -> int:
+    """
+        LLAMA_API DEPRECATED(size_t llama_get_state_size(const struct llama_context * ctx),
+            "use llama_state_get_size instead");
+    """
+    ...
+  def llama_get_timings(ctx: ffi.CData) -> ffi.CData:
+    """
+    Performance information
+
+        LLAMA_API struct llama_timings llama_get_timings(struct llama_context * ctx);
+    """
+    ...
+  def llama_grammar_accept_token(ctx: ffi.CData, grammar: ffi.CData, token: ffi.CData) -> None:
+    """
+    @details Accepts the sampled token into the grammar
+
+        LLAMA_API void llama_grammar_accept_token(
+                struct llama_context * ctx,
+                struct llama_grammar * grammar,
+                         llama_token   token);
+    """
+    ...
+  def llama_grammar_copy(grammar: ffi.CData) -> ffi.CData:
+    """    LLAMA_API struct llama_grammar * llama_grammar_copy(const struct llama_grammar * grammar);"""
+    ...
+  def llama_grammar_free(grammar: ffi.CData) -> None:
+    """    LLAMA_API void llama_grammar_free(struct llama_grammar * grammar);"""
+    ...
+  def llama_grammar_init(rules: ffi.CData, n_rules: int, start_rule_index: int) -> ffi.CData:
+    """
+        LLAMA_API struct llama_grammar * llama_grammar_init(
+                const llama_grammar_element ** rules,
+                                     size_t    n_rules,
+                                     size_t    start_rule_index);
+    """
+    ...
+  def llama_kv_cache_clear(ctx: ffi.CData) -> None:
+    """
+    Clear the KV cache - both cell info is erased and KV data is zeroed
+
+        LLAMA_API void llama_kv_cache_clear(
+                struct llama_context * ctx);
+    """
+    ...
+  def llama_kv_cache_defrag(ctx: ffi.CData) -> None:
+    """
+    Defragment the KV cache
+    This will be applied:
+    - lazily on next llama_decode()
+    - explicitly with llama_kv_cache_update()
+
+        LLAMA_API void llama_kv_cache_defrag(struct llama_context * ctx);
+    """
+    ...
+  def llama_kv_cache_seq_add(ctx: ffi.CData, seq_id: ffi.CData, p0: ffi.CData, p1: ffi.CData, delta: ffi.CData) -> None:
+    """
+    Adds relative position "delta" to all tokens that belong to the specified sequence and have positions in [p0, p1)
+    If the KV cache is RoPEd, the KV data is updated accordingly:
+    - lazily on next llama_decode()
+    - explicitly with llama_kv_cache_update()
+    p0 < 0 : [0,  p1]
+    p1 < 0 : [p0, inf)
+
+        LLAMA_API void llama_kv_cache_seq_add(
+                struct llama_context * ctx,
+                        llama_seq_id   seq_id,
+                           llama_pos   p0,
+                           llama_pos   p1,
+                           llama_pos   delta);
+    """
+    ...
+  def llama_kv_cache_seq_cp(ctx: ffi.CData, seq_id_src: ffi.CData, seq_id_dst: ffi.CData, p0: ffi.CData, p1: ffi.CData) -> None:
+    """
+    Copy all tokens that belong to the specified sequence to another sequence
+    Note that this does not allocate extra KV cache memory - it simply assigns the tokens to the new sequence
+    p0 < 0 : [0,  p1]
+    p1 < 0 : [p0, inf)
+
+        LLAMA_API void llama_kv_cache_seq_cp(
+                struct llama_context * ctx,
+                        llama_seq_id   seq_id_src,
+                        llama_seq_id   seq_id_dst,
+                           llama_pos   p0,
+                           llama_pos   p1);
+    """
+    ...
+  def llama_kv_cache_seq_div(ctx: ffi.CData, seq_id: ffi.CData, p0: ffi.CData, p1: ffi.CData, d: int) -> None:
+    """
+    Integer division of the positions by factor of `d > 1`
+    If the KV cache is RoPEd, the KV data is updated accordingly:
+    - lazily on next llama_decode()
+    - explicitly with llama_kv_cache_update()
+    p0 < 0 : [0,  p1]
+    p1 < 0 : [p0, inf)
+
+        LLAMA_API void llama_kv_cache_seq_div(
+                struct llama_context * ctx,
+                        llama_seq_id   seq_id,
+                           llama_pos   p0,
+                           llama_pos   p1,
+                                 int   d);
+    """
+    ...
+  def llama_kv_cache_seq_keep(ctx: ffi.CData, seq_id: ffi.CData) -> None:
+    """
+    Removes all tokens that do not belong to the specified sequence
+
+        LLAMA_API void llama_kv_cache_seq_keep(
+                struct llama_context * ctx,
+                        llama_seq_id   seq_id);
+    """
+    ...
+  def llama_kv_cache_seq_pos_max(ctx: ffi.CData, seq_id: ffi.CData) -> ffi.CData:
+    """
+    Returns the largest position present in the KV cache for the specified sequence
+
+        LLAMA_API llama_pos llama_kv_cache_seq_pos_max(
+                struct llama_context * ctx,
+                        llama_seq_id   seq_id);
+    """
+    ...
+  def llama_kv_cache_seq_rm(ctx: ffi.CData, seq_id: ffi.CData, p0: ffi.CData, p1: ffi.CData) -> bool:
+    """
+    Removes all tokens that belong to the specified sequence and have positions in [p0, p1)
+    Returns false if a partial sequence cannot be removed. Removing a whole sequence never fails
+    seq_id < 0 : match any sequence
+    p0 < 0     : [0,  p1]
+    p1 < 0     : [p0, inf)
+
+        LLAMA_API bool llama_kv_cache_seq_rm(
+                struct llama_context * ctx,
+                        llama_seq_id   seq_id,
+                           llama_pos   p0,
+                           llama_pos   p1);
+    """
+    ...
+  def llama_kv_cache_update(ctx: ffi.CData) -> None:
+    """
+    Apply the KV cache updates (such as K-shifts, defragmentation, etc.)
+
+        LLAMA_API void llama_kv_cache_update(struct llama_context * ctx);
+    """
+    ...
+  def llama_kv_cache_view_free(view: ffi.CData) -> None:
+    """
+    Free a KV cache view. (use only for debugging purposes)
+
+        LLAMA_API void llama_kv_cache_view_free(struct llama_kv_cache_view * view);
+    """
+    ...
+  def llama_kv_cache_view_init(ctx: ffi.CData, n_seq_max: int) -> ffi.CData:
+    """
+    Create an empty KV cache view. (use only for debugging purposes)
+
+        LLAMA_API struct llama_kv_cache_view llama_kv_cache_view_init(const struct llama_context * ctx, int32_t n_seq_max);
+    """
+    ...
+  def llama_kv_cache_view_update(ctx: ffi.CData, view: ffi.CData) -> None:
+    """
+    Update the KV cache view structure with the current state of the KV cache. (use only for debugging purposes)
+
+        LLAMA_API void llama_kv_cache_view_update(const struct llama_context * ctx, struct llama_kv_cache_view * view);
+    """
+    ...
+  def llama_load_model_from_file(path_model: ffi.CData, params: ffi.CData) -> ffi.CData:
+    """
+        LLAMA_API struct llama_model * llama_load_model_from_file(
+                                 const char * path_model,
+                struct llama_model_params     params);
+    """
+    ...
+  def llama_load_session_file(ctx: ffi.CData, path_session: ffi.CData, tokens_out: ffi.CData, n_token_capacity: int, n_token_count_out: ffi.CData) -> bool:
+    """
+        LLAMA_API DEPRECATED(bool llama_load_session_file(
+                struct llama_context * ctx,
+                          const char * path_session,
+                         llama_token * tokens_out,
+                              size_t   n_token_capacity,
+                              size_t * n_token_count_out),
+            "use llama_state_load_file instead");
+    """
+    ...
+  def llama_log_set(log_callback: ffi.CData, user_data: ffi.CData) -> None:
+    """
+    Set callback for all future logging events.
+    If this is not called, or NULL is supplied, everything is output on stderr.
+
+        LLAMA_API void llama_log_set(ggml_log_callback log_callback, void * user_data);
+    """
+    ...
+  def llama_max_devices() -> int:
+    """    LLAMA_API size_t llama_max_devices(void);"""
+    ...
+  def llama_model_apply_lora_from_file(model: ffi.CData, path_lora: ffi.CData, scale: float, path_base_model: ffi.CData, n_threads: int) -> int:
+    """
+    Apply a LoRA adapter to a loaded model
+    path_base_model is the path to a higher quality model to use as a base for
+    the layers modified by the adapter. Can be NULL to use the current loaded model.
+    The model needs to be reloaded before applying a new adapter, otherwise the adapter
+    will be applied on top of the previous one
+    Returns 0 on success
+
+        LLAMA_API int32_t llama_model_apply_lora_from_file(
+                const struct llama_model * model,
+                              const char * path_lora,
+                                   float   scale,
+                              const char * path_base_model,
+                                 int32_t   n_threads);
+    """
+    ...
+  def llama_model_default_params() -> ffi.CData:
+    """
+    Helpers for getting default parameters
+
+        LLAMA_API struct llama_model_params llama_model_default_params(void);
+    """
+    ...
+  def llama_model_desc(model: ffi.CData, buf: ffi.CData, buf_size: int) -> int:
+    """
+    Get a string describing the model type
+
+        LLAMA_API int32_t llama_model_desc(const struct llama_model * model, char * buf, size_t buf_size);
+    """
+    ...
+  def llama_model_meta_count(model: ffi.CData) -> int:
+    """
+    Get the number of metadata key/value pairs
+
+        LLAMA_API int32_t llama_model_meta_count(const struct llama_model * model);
+    """
+    ...
+  def llama_model_meta_key_by_index(model: ffi.CData, i: int, buf: ffi.CData, buf_size: int) -> int:
+    """
+    Get metadata key name by index
+
+        LLAMA_API int32_t llama_model_meta_key_by_index(const struct llama_model * model, int32_t i, char * buf, size_t buf_size);
+    """
+    ...
+  def llama_model_meta_val_str(model: ffi.CData, key: ffi.CData, buf: ffi.CData, buf_size: int) -> int:
+    """
+    Get metadata value as a string by key name
+
+        LLAMA_API int32_t llama_model_meta_val_str(const struct llama_model * model, const char * key, char * buf, size_t buf_size);
+    """
+    ...
+  def llama_model_meta_val_str_by_index(model: ffi.CData, i: int, buf: ffi.CData, buf_size: int) -> int:
+    """
+    Get metadata value as a string by index
+
+        LLAMA_API int32_t llama_model_meta_val_str_by_index(const struct llama_model * model, int32_t i, char * buf, size_t buf_size);
+    """
+    ...
+  def llama_model_n_params(model: ffi.CData) -> int:
+    """
+    Returns the total number of parameters in the model
+
+        LLAMA_API uint64_t llama_model_n_params(const struct llama_model * model);
+    """
+    ...
+  def llama_model_quantize(fname_inp: ffi.CData, fname_out: ffi.CData, params: ffi.CData) -> int:
+    """
+    Returns 0 on success
+
+        LLAMA_API uint32_t llama_model_quantize(
+                const char * fname_inp,
+                const char * fname_out,
+                const llama_model_quantize_params * params);
+    """
+    ...
+  def llama_model_quantize_default_params() -> ffi.CData:
+    """    LLAMA_API struct llama_model_quantize_params llama_model_quantize_default_params(void);"""
+    ...
+  def llama_model_size(model: ffi.CData) -> int:
+    """
+    Returns the total size of all the tensors in the model in bytes
+
+        LLAMA_API uint64_t llama_model_size(const struct llama_model * model);
+    """
+    ...
+  def llama_n_batch(ctx: ffi.CData) -> int:
+    """    LLAMA_API uint32_t llama_n_batch    (const struct llama_context * ctx);"""
+    ...
+  def llama_n_ctx(ctx: ffi.CData) -> int:
+    """    LLAMA_API uint32_t llama_n_ctx      (const struct llama_context * ctx);"""
+    ...
+  def llama_n_ctx_train(model: ffi.CData) -> int:
+    """    LLAMA_API int32_t llama_n_ctx_train(const struct llama_model * model);"""
+    ...
+  def llama_n_embd(model: ffi.CData) -> int:
+    """    LLAMA_API int32_t llama_n_embd     (const struct llama_model * model);"""
+    ...
+  def llama_n_layer(model: ffi.CData) -> int:
+    """    LLAMA_API int32_t llama_n_layer    (const struct llama_model * model);"""
+    ...
+  def llama_n_seq_max(ctx: ffi.CData) -> int:
+    """    LLAMA_API uint32_t llama_n_seq_max  (const struct llama_context * ctx);"""
+    ...
+  def llama_n_ubatch(ctx: ffi.CData) -> int:
+    """    LLAMA_API uint32_t llama_n_ubatch   (const struct llama_context * ctx);"""
+    ...
+  def llama_n_vocab(model: ffi.CData) -> int:
+    """    LLAMA_API int32_t llama_n_vocab    (const struct llama_model * model);"""
+    ...
+  def llama_new_context_with_model(model: ffi.CData, params: ffi.CData) -> ffi.CData:
+    """
+        LLAMA_API struct llama_context * llama_new_context_with_model(
+                         struct llama_model * model,
+                struct llama_context_params   params);
+    """
+    ...
+  def llama_numa_init(numa: int) -> None:
+    """
+    optional:
+
+        LLAMA_API void llama_numa_init(enum ggml_numa_strategy numa);
+    """
+    ...
+  def llama_pooling_type(ctx: ffi.CData) -> int:
+    """    LLAMA_API enum llama_pooling_type llama_pooling_type(const struct llama_context * ctx);"""
+    ...
+  def llama_print_system_info() -> ffi.CData:
+    """
+    Print system information
+
+        LLAMA_API const char * llama_print_system_info(void);
+    """
+    ...
+  def llama_print_timings(ctx: ffi.CData) -> None:
+    """    LLAMA_API void llama_print_timings(struct llama_context * ctx);"""
+    ...
+  def llama_reset_timings(ctx: ffi.CData) -> None:
+    """    LLAMA_API void llama_reset_timings(struct llama_context * ctx);"""
+    ...
+  def llama_rope_freq_scale_train(model: ffi.CData) -> float:
+    """
+    Get the model's RoPE frequency scaling factor
+
+        LLAMA_API float llama_rope_freq_scale_train(const struct llama_model * model);
+    """
+    ...
+  def llama_rope_type(model: ffi.CData) -> int:
+    """    LLAMA_API enum llama_rope_type    llama_rope_type   (const struct llama_model   * model);"""
+    ...
+  def llama_sample_apply_guidance(ctx: ffi.CData, logits: ffi.CData, logits_guidance: ffi.CData, scale: float) -> None:
+    """
+    @details Apply classifier-free guidance to the logits as described in academic paper "Stay on topic with Classifier-Free Guidance" https://arxiv.org/abs/2306.17806
+    @param logits Logits extracted from the original generation context.
+    @param logits_guidance Logits extracted from a separate context from the same model. Other than a negative prompt at the beginning, it should have all generated and user input tokens copied from the main context.
+    @param scale Guidance strength. 1.0f means no guidance. Higher values mean stronger guidance.
+
+        LLAMA_API void llama_sample_apply_guidance(
+                  struct llama_context * ctx,
+                                 float * logits,
+                                 float * logits_guidance,
+                                 float   scale);
+    """
+    ...
+  def llama_sample_entropy(ctx: ffi.CData, candidates_p: ffi.CData, min_temp: float, max_temp: float, exponent_val: float) -> None:
+    """
+    @details Dynamic temperature implementation described in the paper https://arxiv.org/abs/2309.02772.
+
+        LLAMA_API void llama_sample_entropy(
+                struct llama_context * ctx,
+              llama_token_data_array * candidates_p,
+                               float   min_temp,
+                               float   max_temp,
+                               float   exponent_val);
+    """
+    ...
+  def llama_sample_grammar(ctx: ffi.CData, candidates: ffi.CData, grammar: ffi.CData) -> None:
+    """
+    @details Apply constraints from grammar
+
+        LLAMA_API void llama_sample_grammar(
+                struct llama_context * ctx,
+              llama_token_data_array * candidates,
+          const struct llama_grammar * grammar);
+    """
+    ...
+  def llama_sample_min_p(ctx: ffi.CData, candidates: ffi.CData, p: float, min_keep: int) -> None:
+    """
+    @details Minimum P sampling as described in https://github.com/ggerganov/llama.cpp/pull/3841
+
+        LLAMA_API void llama_sample_min_p(
+                struct llama_context * ctx,
+              llama_token_data_array * candidates,
+                               float   p,
+                              size_t   min_keep);
+    """
+    ...
+  def llama_sample_repetition_penalties(ctx: ffi.CData, candidates: ffi.CData, last_tokens: ffi.CData, penalty_last_n: int, penalty_repeat: float, penalty_freq: float, penalty_present: float) -> None:
+    """
+    @details Repetition penalty described in CTRL academic paper https://arxiv.org/abs/1909.05858, with negative logit fix.
+    @details Frequency and presence penalties described in OpenAI API https://platform.openai.com/docs/api-reference/parameter-details.
+
+        LLAMA_API void llama_sample_repetition_penalties(
+                struct llama_context * ctx,
+              llama_token_data_array * candidates,
+                   const llama_token * last_tokens,
+                              size_t   penalty_last_n,
+                               float   penalty_repeat,
+                               float   penalty_freq,
+                               float   penalty_present);
+    """
+    ...
+  def llama_sample_softmax(ctx: ffi.CData, candidates: ffi.CData) -> None:
+    """
+    @details Sorts candidate tokens by their logits in descending order and calculate probabilities based on logits.
+
+        LLAMA_API void llama_sample_softmax(
+                struct llama_context * ctx,
+              llama_token_data_array * candidates);
+    """
+    ...
+  def llama_sample_tail_free(ctx: ffi.CData, candidates: ffi.CData, z: float, min_keep: int) -> None:
+    """
+    @details Tail Free Sampling described in https://www.trentonbricken.com/Tail-Free-Sampling/.
+
+        LLAMA_API void llama_sample_tail_free(
+                struct llama_context * ctx,
+              llama_token_data_array * candidates,
+                               float   z,
+                              size_t   min_keep);
+    """
+    ...
+  def llama_sample_temp(ctx: ffi.CData, candidates: ffi.CData, temp: float) -> None:
+    """
+        LLAMA_API void llama_sample_temp(
+                struct llama_context * ctx,
+              llama_token_data_array * candidates,
+                               float   temp);
+    """
+    ...
+  def llama_sample_token(ctx: ffi.CData, candidates: ffi.CData) -> ffi.CData:
+    """
+    @details Randomly selects a token from the candidates based on their probabilities using the RNG of ctx.
+
+        LLAMA_API llama_token llama_sample_token(
+                struct llama_context * ctx,
+              llama_token_data_array * candidates);
+    """
+    ...
+  def llama_sample_token_greedy(ctx: ffi.CData, candidates: ffi.CData) -> ffi.CData:
+    """
+    @details Selects the token with the highest probability.
+    Does not compute the token probabilities. Use llama_sample_softmax() instead.
+
+        LLAMA_API llama_token llama_sample_token_greedy(
+                struct llama_context * ctx,
+              llama_token_data_array * candidates);
+    """
+    ...
+  def llama_sample_token_mirostat(ctx: ffi.CData, candidates: ffi.CData, tau: float, eta: float, m: int, mu: ffi.CData) -> ffi.CData:
+    """
+    @details Mirostat 1.0 algorithm described in the paper https://arxiv.org/abs/2007.14966. Uses tokens instead of words.
+    @param candidates A vector of `llama_token_data` containing the candidate tokens, their probabilities (p), and log-odds (logit) for the current position in the generated text.
+    @param tau  The target cross-entropy (or surprise) value you want to achieve for the generated text. A higher value corresponds to more surprising or less predictable text, while a lower value corresponds to less surprising or more predictable text.
+    @param eta The learning rate used to update `mu` based on the error between the target and observed surprisal of the sampled word. A larger learning rate will cause `mu` to be updated more quickly, while a smaller learning rate will result in slower updates.
+    @param m The number of tokens considered in the estimation of `s_hat`. This is an arbitrary value that is used to calculate `s_hat`, which in turn helps to calculate the value of `k`. In the paper, they use `m = 100`, but you can experiment with different values to see how it affects the performance of the algorithm.
+    @param mu Maximum cross-entropy. This value is initialized to be twice the target cross-entropy (`2 * tau`) and is updated in the algorithm based on the error between the target and observed surprisal.
+
+        LLAMA_API llama_token llama_sample_token_mirostat(
+                struct llama_context * ctx,
+              llama_token_data_array * candidates,
+                               float   tau,
+                               float   eta,
+                             int32_t   m,
+                               float * mu);
+    """
+    ...
+  def llama_sample_token_mirostat_v2(ctx: ffi.CData, candidates: ffi.CData, tau: float, eta: float, mu: ffi.CData) -> ffi.CData:
+    """
+    @details Mirostat 2.0 algorithm described in the paper https://arxiv.org/abs/2007.14966. Uses tokens instead of words.
+    @param candidates A vector of `llama_token_data` containing the candidate tokens, their probabilities (p), and log-odds (logit) for the current position in the generated text.
+    @param tau  The target cross-entropy (or surprise) value you want to achieve for the generated text. A higher value corresponds to more surprising or less predictable text, while a lower value corresponds to less surprising or more predictable text.
+    @param eta The learning rate used to update `mu` based on the error between the target and observed surprisal of the sampled word. A larger learning rate will cause `mu` to be updated more quickly, while a smaller learning rate will result in slower updates.
+    @param mu Maximum cross-entropy. This value is initialized to be twice the target cross-entropy (`2 * tau`) and is updated in the algorithm based on the error between the target and observed surprisal.
+
+        LLAMA_API llama_token llama_sample_token_mirostat_v2(
+                struct llama_context * ctx,
+              llama_token_data_array * candidates,
+                               float   tau,
+                               float   eta,
+                               float * mu);
+    """
+    ...
+  def llama_sample_top_k(ctx: ffi.CData, candidates: ffi.CData, k: int, min_keep: int) -> None:
+    """
+    @details Top-K sampling described in academic paper "The Curious Case of Neural Text Degeneration" https://arxiv.org/abs/1904.09751
+
+        LLAMA_API void llama_sample_top_k(
+                struct llama_context * ctx,
+              llama_token_data_array * candidates,
+                             int32_t   k,
+                              size_t   min_keep);
+    """
+    ...
+  def llama_sample_top_p(ctx: ffi.CData, candidates: ffi.CData, p: float, min_keep: int) -> None:
+    """
+    @details Nucleus sampling described in academic paper "The Curious Case of Neural Text Degeneration" https://arxiv.org/abs/1904.09751
+
+        LLAMA_API void llama_sample_top_p(
+                struct llama_context * ctx,
+              llama_token_data_array * candidates,
+                               float   p,
+                              size_t   min_keep);
+    """
+    ...
+  def llama_sample_typical(ctx: ffi.CData, candidates: ffi.CData, p: float, min_keep: int) -> None:
+    """
+    @details Locally Typical Sampling implementation described in the paper https://arxiv.org/abs/2202.00666.
+
+        LLAMA_API void llama_sample_typical(
+                struct llama_context * ctx,
+              llama_token_data_array * candidates,
+                               float   p,
+                              size_t   min_keep);
+    """
+    ...
+  def llama_save_session_file(ctx: ffi.CData, path_session: ffi.CData, tokens: ffi.CData, n_token_count: int) -> bool:
+    """
+        LLAMA_API DEPRECATED(bool llama_save_session_file(
+                struct llama_context * ctx,
+                          const char * path_session,
+                   const llama_token * tokens,
+                              size_t   n_token_count),
+            "use llama_state_save_file instead");
+    """
+    ...
+  def llama_set_abort_callback(ctx: ffi.CData, abort_callback: ffi.CData, abort_callback_data: ffi.CData) -> None:
+    """
+    Set abort callback
+
+        LLAMA_API void llama_set_abort_callback(struct llama_context * ctx, ggml_abort_callback abort_callback, void * abort_callback_data);
+    """
+    ...
+  def llama_set_causal_attn(ctx: ffi.CData, causal_attn: bool) -> None:
+    """
+    Set whether to use causal attention or not
+    If set to true, the model will only attend to the past tokens
+
+        LLAMA_API void llama_set_causal_attn(struct llama_context * ctx, bool causal_attn);
+    """
+    ...
+  def llama_set_n_threads(ctx: ffi.CData, n_threads: int, n_threads_batch: int) -> None:
+    """
+    Set the number of threads used for decoding
+    n_threads is the number of threads used for generation (single token)
+    n_threads_batch is the number of threads used for prompt and batch processing (multiple tokens)
+
+        LLAMA_API void llama_set_n_threads(struct llama_context * ctx, uint32_t n_threads, uint32_t n_threads_batch);
+    """
+    ...
+  def llama_set_rng_seed(ctx: ffi.CData, seed: int) -> None:
+    """
+    Sets the current rng seed.
+
+        LLAMA_API void llama_set_rng_seed(struct llama_context * ctx, uint32_t seed);
+    """
+    ...
+  def llama_set_state_data(ctx: ffi.CData, src: ffi.CData) -> int:
+    """
+        LLAMA_API DEPRECATED(size_t llama_set_state_data(
+                struct llama_context * ctx,
+                       const uint8_t * src),
+            "use llama_state_set_data instead");
+    """
+    ...
+  def llama_split_path(split_path: ffi.CData, maxlen: int, path_prefix: ffi.CData, split_no: int, split_count: int) -> int:
+    """
+    @details Build a split GGUF final path for this chunk.
+    llama_split_path(split_path, sizeof(split_path), "/models/ggml-model-q4_0", 2, 4) => split_path = "/models/ggml-model-q4_0-00002-of-00004.gguf"
+    Returns the split_path length.
+
+        LLAMA_API int llama_split_path(char * split_path, size_t maxlen, const char * path_prefix, int split_no, int split_count);
+    """
+    ...
+  def llama_split_prefix(split_prefix: ffi.CData, maxlen: int, split_path: ffi.CData, split_no: int, split_count: int) -> int:
+    """
+    @details Extract the path prefix from the split_path if and only if the split_no and split_count match.
+    llama_split_prefix(split_prefix, 64, "/models/ggml-model-q4_0-00002-of-00004.gguf", 2, 4) => split_prefix = "/models/ggml-model-q4_0"
+    Returns the split_prefix length.
+
+        LLAMA_API int llama_split_prefix(char * split_prefix, size_t maxlen, const char * split_path, int split_no, int split_count);
+    """
+    ...
+  def llama_state_get_data(ctx: ffi.CData, dst: ffi.CData) -> int:
+    """
+    Copies the state to the specified destination address.
+    Destination needs to have allocated enough memory.
+    Returns the number of bytes copied
+
+        LLAMA_API size_t llama_state_get_data(
+                struct llama_context * ctx,
+                             uint8_t * dst);
+    """
+    ...
+  def llama_state_get_size(ctx: ffi.CData) -> int:
+    """
+    Returns the maximum size in bytes of the state (rng, logits, embedding
+    and kv_cache) - will often be smaller after compacting tokens
+
+        LLAMA_API size_t llama_state_get_size(const struct llama_context * ctx);
+    """
+    ...
+  def llama_state_load_file(ctx: ffi.CData, path_session: ffi.CData, tokens_out: ffi.CData, n_token_capacity: int, n_token_count_out: ffi.CData) -> bool:
+    """
+    Save/load session file
+
+        LLAMA_API bool llama_state_load_file(
+                struct llama_context * ctx,
+                          const char * path_session,
+                         llama_token * tokens_out,
+                              size_t   n_token_capacity,
+                              size_t * n_token_count_out);
+    """
+    ...
+  def llama_state_save_file(ctx: ffi.CData, path_session: ffi.CData, tokens: ffi.CData, n_token_count: int) -> bool:
+    """
+        LLAMA_API bool llama_state_save_file(
+                struct llama_context * ctx,
+                          const char * path_session,
+                   const llama_token * tokens,
+                              size_t   n_token_count);
+    """
+    ...
+  def llama_state_seq_get_data(ctx: ffi.CData, dst: ffi.CData, seq_id: ffi.CData) -> int:
+    """
+    Copy the KV cache of a single sequence into the specified buffer
+
+        LLAMA_API size_t llama_state_seq_get_data(
+                struct llama_context * ctx,
+                             uint8_t * dst,
+                        llama_seq_id   seq_id);
+    """
+    ...
+  def llama_state_seq_get_size(ctx: ffi.CData, seq_id: ffi.CData) -> int:
+    """
+    Get the exact size needed to copy the KV cache of a single sequence
+
+        LLAMA_API size_t llama_state_seq_get_size(
+                struct llama_context * ctx,
+                        llama_seq_id   seq_id);
+    """
+    ...
+  def llama_state_seq_load_file(ctx: ffi.CData, filepath: ffi.CData, dest_seq_id: ffi.CData, tokens_out: ffi.CData, n_token_capacity: int, n_token_count_out: ffi.CData) -> int:
+    """
+        LLAMA_API size_t llama_state_seq_load_file(
+                struct llama_context * ctx,
+                          const char * filepath,
+                        llama_seq_id   dest_seq_id,
+                         llama_token * tokens_out,
+                              size_t   n_token_capacity,
+                              size_t * n_token_count_out);
+    """
+    ...
+  def llama_state_seq_save_file(ctx: ffi.CData, filepath: ffi.CData, seq_id: ffi.CData, tokens: ffi.CData, n_token_count: int) -> int:
+    """
+        LLAMA_API size_t llama_state_seq_save_file(
+                struct llama_context * ctx,
+                          const char * filepath,
+                        llama_seq_id   seq_id,
+                   const llama_token * tokens,
+                              size_t   n_token_count);
+    """
+    ...
+  def llama_state_seq_set_data(ctx: ffi.CData, src: ffi.CData, dest_seq_id: ffi.CData) -> int:
+    """
+    Copy the sequence data (originally copied with `llama_state_seq_get_data`) into the specified sequence
+    Returns:
+    - Positive: Ok
+    - Zero: Failed to load
+
+        LLAMA_API size_t llama_state_seq_set_data(
+                struct llama_context * ctx,
+                       const uint8_t * src,
+                        llama_seq_id   dest_seq_id);
+    """
+    ...
+  def llama_state_set_data(ctx: ffi.CData, src: ffi.CData) -> int:
+    """
+    Set the state reading from the specified address
+    Returns the number of bytes read
+
+        LLAMA_API size_t llama_state_set_data(
+                struct llama_context * ctx,
+                       const uint8_t * src);
+    """
+    ...
+  def llama_supports_gpu_offload() -> bool:
+    """    LLAMA_API bool llama_supports_gpu_offload(void);"""
+    ...
+  def llama_supports_mlock() -> bool:
+    """    LLAMA_API bool llama_supports_mlock      (void);"""
+    ...
+  def llama_supports_mmap() -> bool:
+    """    LLAMA_API bool llama_supports_mmap       (void);"""
+    ...
+  def llama_synchronize(ctx: ffi.CData) -> None:
+    """
+    Wait until all computations are finished
+    This is automatically done when using one of the functions below to obtain the computation results
+    and is not necessary to call it explicitly in most cases
+
+        LLAMA_API void llama_synchronize(struct llama_context * ctx);
+    """
+    ...
+  def llama_time_us() -> int:
+    """    LLAMA_API int64_t llama_time_us(void);"""
+    ...
+  def llama_token_bos(model: ffi.CData) -> ffi.CData:
+    """
+    Special tokens
+
+        LLAMA_API llama_token llama_token_bos(const struct llama_model * model); // beginning-of-sentence
+    """
+    ...
+  def llama_token_cls(model: ffi.CData) -> ffi.CData:
+    """    LLAMA_API llama_token llama_token_cls(const struct llama_model * model); // classification"""
+    ...
+  def llama_token_eos(model: ffi.CData) -> ffi.CData:
+    """    LLAMA_API llama_token llama_token_eos(const struct llama_model * model); // end-of-sentence"""
+    ...
+  def llama_token_eot(model: ffi.CData) -> ffi.CData:
+    """    LLAMA_API llama_token llama_token_eot   (const struct llama_model * model); // End of infill middle"""
+    ...
+  def llama_token_get_score(model: ffi.CData, token: ffi.CData) -> float:
+    """    LLAMA_API float llama_token_get_score(const struct llama_model * model, llama_token token);"""
+    ...
+  def llama_token_get_text(model: ffi.CData, token: ffi.CData) -> ffi.CData:
+    """    LLAMA_API const char * llama_token_get_text(const struct llama_model * model, llama_token token);"""
+    ...
+  def llama_token_get_type(model: ffi.CData, token: ffi.CData) -> int:
+    """    LLAMA_API enum llama_token_type llama_token_get_type(const struct llama_model * model, llama_token token);"""
+    ...
+  def llama_token_is_eog(model: ffi.CData, token: ffi.CData) -> bool:
+    """
+    Check if the token is supposed to end generation (end-of-generation, eg. EOS, EOT, etc.)
+
+        LLAMA_API bool llama_token_is_eog(const struct llama_model * model, llama_token token);
+    """
+    ...
+  def llama_token_middle(model: ffi.CData) -> ffi.CData:
+    """    LLAMA_API llama_token llama_token_middle(const struct llama_model * model); // Beginning of infill middle"""
+    ...
+  def llama_token_nl(model: ffi.CData) -> ffi.CData:
+    """    LLAMA_API llama_token llama_token_nl (const struct llama_model * model); // next-line"""
+    ...
+  def llama_token_prefix(model: ffi.CData) -> ffi.CData:
+    """
+    Codellama infill tokens
+
+        LLAMA_API llama_token llama_token_prefix(const struct llama_model * model); // Beginning of infill prefix
+    """
+    ...
+  def llama_token_sep(model: ffi.CData) -> ffi.CData:
+    """    LLAMA_API llama_token llama_token_sep(const struct llama_model * model); // sentence separator"""
+    ...
+  def llama_token_suffix(model: ffi.CData) -> ffi.CData:
+    """    LLAMA_API llama_token llama_token_suffix(const struct llama_model * model); // Beginning of infill suffix"""
+    ...
+  def llama_token_to_piece(model: ffi.CData, token: ffi.CData, buf: ffi.CData, length: int, special: bool) -> int:
+    """
+    Token Id -> Piece.
+    Uses the vocabulary in the provided context.
+    Does not write null terminator to the buffer.
+    User code is responsible to remove the leading whitespace of the first non-BOS token when decoding multiple tokens.
+    @param special If true, special tokens are rendered in the output.
+
+        LLAMA_API int32_t llama_token_to_piece(
+                  const struct llama_model * model,
+                               llama_token   token,
+                                      char * buf,
+                                   int32_t   length,
+                                      bool   special);
+    """
+    ...
+  def llama_tokenize(model: ffi.CData, text: ffi.CData, text_len: int, tokens: ffi.CData, n_tokens_max: int, add_special: bool, parse_special: bool) -> int:
+    """
+    @details Convert the provided text into tokens.
+    @param tokens The tokens pointer must be large enough to hold the resulting tokens.
+    @return Returns the number of tokens on success, no more than n_tokens_max
+    @return Returns a negative number on failure - the number of tokens that would have been returned
+    @param parse_special Allow tokenizing special and/or control tokens which otherwise are not exposed and treated
+    as plaintext. Does not insert a leading space.
+
+        LLAMA_API int32_t llama_tokenize(
+            const struct llama_model * model,
+                          const char * text,
+                             int32_t   text_len,
+                         llama_token * tokens,
+                             int32_t   n_tokens_max,
+                                bool   add_special,
+                                bool   parse_special);
+    """
+    ...
+  def llama_vocab_type(model: ffi.CData) -> int:
+    """    LLAMA_API enum llama_vocab_type   llama_vocab_type  (const struct llama_model   * model);"""
+    ...
+  def open_memstream(__bufp: ffi.CData, __sizep: ffi.CData) -> ffi.CData:
+    """FILE *open_memstream(char **__bufp, size_t *__sizep) __API_AVAILABLE(macos(10.13), ios(11.0), tvos(11.0), watchos(4.0));"""
+    ...
+  def pclose(arg: ffi.CData) -> int:
+    """int	 pclose(FILE *) __swift_unavailable("Use posix_spawn APIs or NSTask instead. (On iOS, process spawning is unavailable.)");"""
+    ...
+  def perror(arg: ffi.CData) -> None:
+    """void	 perror(const char *) __cold;"""
+    ...
+  def popen(arg: ffi.CData, arg2: ffi.CData) -> ffi.CData:
+    """FILE	*popen(const char *, const char *) __DARWIN_ALIAS_STARTING(__MAC_10_6, __IPHONE_2_0, __DARWIN_ALIAS(popen)) __swift_unavailable("Use posix_spawn APIs or NSTask instead. (On iOS, process spawning is unavailable.)");"""
+    ...
+  def printf(arg: ffi.CData, *args2) -> int:
+    """int	 printf(const char * __restrict, ...) __printflike(1, 2);"""
+    ...
+  def putc(arg: int, arg2: ffi.CData) -> int:
+    """int	 putc(int, FILE *);"""
+    ...
+  def putc_unlocked(arg: int, arg2: ffi.CData) -> int:
+    """int	 putc_unlocked(int, FILE *);"""
+    ...
+  def putchar(arg: int) -> int:
+    """int	 putchar(int);"""
+    ...
+  def putchar_unlocked(arg: int) -> int:
+    """int	 putchar_unlocked(int);"""
+    ...
+  def puts(arg: ffi.CData) -> int:
+    """int	 puts(const char *);"""
+    ...
+  def putw(arg: int, arg2: ffi.CData) -> int:
+    """int	 putw(int, FILE *);"""
     ...
   def quantize_iq1_m(src: ffi.CData, dst: ffi.CData, nrows: int, n_per_row: int, imatrix: ffi.CData) -> int:
     """size_t quantize_iq1_m  (const float * GGML_RESTRICT src, void * GGML_RESTRICT dst, int64_t nrows, int64_t n_per_row, const float * imatrix);"""
@@ -3748,6 +5166,87 @@ class lib:
   def quantize_row_q8_K_reference(x: ffi.CData, y: ffi.CData, k: int) -> None:
     """void quantize_row_q8_K_reference(const float * GGML_RESTRICT x, block_q8_K * GGML_RESTRICT y, int64_t k);"""
     ...
+  def remove(arg: ffi.CData) -> int:
+    """int	 remove(const char *);"""
+    ...
+  def rename(__old: ffi.CData, __new: ffi.CData) -> int:
+    """int	 rename (const char *__old, const char *__new);"""
+    ...
+  def renameat(arg: int, arg2: ffi.CData, arg3: int, arg4: ffi.CData) -> int:
+    """int     renameat(int, const char *, int, const char *) __OSX_AVAILABLE_STARTING(__MAC_10_10, __IPHONE_8_0);"""
+    ...
+  def renameatx_np(arg: int, arg2: ffi.CData, arg3: int, arg4: ffi.CData, arg5: int) -> int:
+    """int renameatx_np(int, const char *, int, const char *, unsigned int) __OSX_AVAILABLE(10.12) __IOS_AVAILABLE(10.0) __TVOS_AVAILABLE(10.0) __WATCHOS_AVAILABLE(3.0);"""
+    ...
+  def renamex_np(arg: ffi.CData, arg2: ffi.CData, arg3: int) -> int:
+    """int renamex_np(const char *, const char *, unsigned int) __OSX_AVAILABLE(10.12) __IOS_AVAILABLE(10.0) __TVOS_AVAILABLE(10.0) __WATCHOS_AVAILABLE(3.0);"""
+    ...
+  def rewind(arg: ffi.CData) -> None:
+    """void	 rewind(FILE *);"""
+    ...
+  def scanf(arg: ffi.CData, *args2) -> int:
+    """int	 scanf(const char * __restrict, ...) __scanflike(1, 2);"""
+    ...
+  def setbuf(arg: ffi.CData, arg2: ffi.CData) -> None:
+    """void	 setbuf(FILE * __restrict, char * __restrict);"""
+    ...
+  def setbuffer(arg: ffi.CData, arg2: ffi.CData, arg3: int) -> None:
+    """void	 setbuffer(FILE *, char *, int);"""
+    ...
+  def setlinebuf(arg: ffi.CData) -> int:
+    """int	 setlinebuf(FILE *);"""
+    ...
+  def setvbuf(arg: ffi.CData, arg2: ffi.CData, arg3: int, arg4: int) -> int:
+    """int	 setvbuf(FILE * __restrict, char * __restrict, int, size_t);"""
+    ...
+  def snprintf(__str: ffi.CData, __size: int, __format: ffi.CData, *args2) -> int:
+    """int	 snprintf(char * __restrict __str, size_t __size, const char * __restrict __format, ...) __printflike(3, 4);"""
+    ...
+  def sprintf(arg: ffi.CData, arg2: ffi.CData, *args2) -> int:
+    """int	 sprintf(char * __restrict, const char * __restrict, ...) __printflike(2, 3);"""
+    ...
+  def sscanf(arg: ffi.CData, arg2: ffi.CData, *args2) -> int:
+    """int	 sscanf(const char * __restrict, const char * __restrict, ...) __scanflike(2, 3);"""
+    ...
   def start_rpc_server(backend: ffi.CData, endpoint: ffi.CData, free_mem: int, total_mem: int) -> None:
     """GGML_API GGML_CALL void start_rpc_server(ggml_backend_t backend, const char * endpoint, size_t free_mem, size_t total_mem);"""
+    ...
+  def tempnam(__dir: ffi.CData, __prefix: ffi.CData) -> ffi.CData:
+    """char	*tempnam(const char *__dir, const char *__prefix) __DARWIN_ALIAS(tempnam);"""
+    ...
+  def tmpfile() -> ffi.CData:
+    """FILE	*tmpfile(void);"""
+    ...
+  def tmpnam(arg: ffi.CData) -> ffi.CData:
+    """char	*tmpnam(char *);"""
+    ...
+  def ungetc(arg: int, arg2: ffi.CData) -> int:
+    """int	 ungetc(int, FILE *);"""
+    ...
+  def vasprintf(arg: ffi.CData, arg2: ffi.CData, arg3: ffi.CData) -> int:
+    """int	 vasprintf(char ** __restrict, const char * __restrict, va_list) __printflike(2, 0);"""
+    ...
+  def vdprintf(arg: int, arg2: ffi.CData, arg3: ffi.CData) -> int:
+    """int	vdprintf(int, const char * __restrict, va_list) __printflike(2, 0) __OSX_AVAILABLE_STARTING(__MAC_10_7, __IPHONE_4_3);"""
+    ...
+  def vfprintf(arg: ffi.CData, arg2: ffi.CData, arg3: ffi.CData) -> int:
+    """int	 vfprintf(FILE * __restrict, const char * __restrict, va_list) __printflike(2, 0);"""
+    ...
+  def vfscanf(__stream: ffi.CData, __format: ffi.CData, arg: ffi.CData) -> int:
+    """int	 vfscanf(FILE * __restrict __stream, const char * __restrict __format, va_list) __scanflike(2, 0);"""
+    ...
+  def vprintf(arg: ffi.CData, arg2: ffi.CData) -> int:
+    """int	 vprintf(const char * __restrict, va_list) __printflike(1, 0);"""
+    ...
+  def vscanf(__format: ffi.CData, arg: ffi.CData) -> int:
+    """int	 vscanf(const char * __restrict __format, va_list) __scanflike(1, 0);"""
+    ...
+  def vsnprintf(__str: ffi.CData, __size: int, __format: ffi.CData, arg: ffi.CData) -> int:
+    """int	 vsnprintf(char * __restrict __str, size_t __size, const char * __restrict __format, va_list) __printflike(3, 0);"""
+    ...
+  def vsprintf(arg: ffi.CData, arg2: ffi.CData, arg3: ffi.CData) -> int:
+    """int	 vsprintf(char * __restrict, const char * __restrict, va_list) __printflike(2, 0);"""
+    ...
+  def vsscanf(__str: ffi.CData, __format: ffi.CData, arg: ffi.CData) -> int:
+    """int	 vsscanf(const char * __restrict __str, const char * __restrict __format, va_list) __scanflike(2, 0);"""
     ...
