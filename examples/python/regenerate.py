@@ -7,7 +7,7 @@ import cffi
 from stubs import generate_stubs
 
 API = os.environ.get('API', 'api.h')
-CC = os.environ.get('CC') or 'gcc'
+CC = os.environ.get('CC', 'gcc')
 C_INCLUDE_DIR = os.environ.get('C_INCLUDE_DIR', '../../../llama.cpp')
 CPPFLAGS = [x for x in os.environ.get('CPPFLAGS', '').split(' ') if x != '']
 
