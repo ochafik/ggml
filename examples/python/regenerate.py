@@ -9,31 +9,31 @@ from stubs import generate_stubs
 API = os.environ.get('API', 'api.h')
 CC = os.environ.get('CC') or 'gcc'
 C_INCLUDE_DIR = os.environ.get('C_INCLUDE_DIR', '../../../llama.cpp')
-CPPFLAGS = [
+CPPFLAGS = [x for x in os.environ.get('CPPFLAGS', '').split(' ') if x != '']
+
+try: header = subprocess.check_output([
+    CC,
     '-I', C_INCLUDE_DIR,
+    '-U__GNUC__',
     '-D_Nullable=',
     '-D__asm(x)=',
     '-D__attribute__(x)=',
     '-D_Static_assert(x, m)=',
-    # '-D__fp16=uint16_t',  # pycparser doesn't support __fp16
-] + [x for x in os.environ.get('CPPFLAGS', '').split(' ') if x != '']
-
-try: header = subprocess.run([
-    CC, '-U__GNUC__', '-E', *CPPFLAGS, API
-], capture_output=True, text=True, check=True).stdout
+    *CPPFLAGS,
+    '-E',
+    API,
+], text=True)
 except subprocess.CalledProcessError as e: print(f'{e.stderr}\n{e}', file=sys.stderr); raise
 
-header = 'typedef int va_list;\n' + header
-
-# Replace constant size expressions w/ their value (compile & run a mini exe for each, because why not).
-# First, extract anyting *inside* square brackets and anything that looks like a sizeof call.
-for expr in set(re.findall(f'(?<=\\[)[^\\]]+(?=])|sizeof\\s*\\([^()]+\\)', header)):
-    if re.match(r'^(\d+|\s*)$', expr): continue # skip constants and empty bracket contents
-    subprocess.run([CC, "-o", "eval_size_expr", *CPPFLAGS, "-x", "c", "-"], text=True, check=True,
-                   input=f'''#include <stdio.h>
-                             #include "{API}"
-                             int main() {{ printf("%lu", (size_t)({expr})); }}''')
-    size = subprocess.run(["./eval_size_expr"], capture_output=True, text=True, check=True).stdout
+# Replace constant sizeof expressions w/ their value (compile & run a mini exe for each, because why not).
+for expr in set(re.findall(f'sizeof\\s*\\([^()]+\\)', header)):
+    subprocess.run(
+        [CC, "-o", "eval_size_expr", '-I', C_INCLUDE_DIR, *CPPFLAGS, "-x", "c", "-"],
+        text=True, check=True,
+        input=f'''#include <stdio.h>
+                  #include "{API}"
+                  int main() {{ printf("%lu", (size_t)({expr})); }}''')
+    size = subprocess.check_output(["./eval_size_expr"], text=True)
     print(f'Computed constexpr {expr} = {size}')
     header = header.replace(expr, size)
 
